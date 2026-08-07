@@ -11,10 +11,12 @@
 import { useState } from "react";
 
 import Chat from "@/components/Chat";
+import MemoryMap from "@/components/MemoryMap";
 import Sidebar from "@/components/Sidebar";
 
 export default function Workspace() {
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
 
   return (
     <main className="flex h-dvh gap-3 p-3 sm:gap-4 sm:p-6">
@@ -40,7 +42,14 @@ export default function Workspace() {
       )}
 
       <div className="min-w-0 flex-1">
-        <Chat onOpenArchive={() => setArchiveOpen(true)} />
+        {mapOpen ? (
+          <MemoryMap onClose={() => setMapOpen(false)} />
+        ) : (
+          <Chat
+            onOpenArchive={() => setArchiveOpen(true)}
+            onOpenMap={() => setMapOpen(true)}
+          />
+        )}
       </div>
     </main>
   );

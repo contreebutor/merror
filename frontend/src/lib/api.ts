@@ -323,3 +323,27 @@ export async function speak(text: string): Promise<Result<string>> {
 
   return { ok: true, data: URL.createObjectURL(await response.blob()) };
 }
+
+/* --------------------------------------------------------------------------
+   Memory map
+   -------------------------------------------------------------------------- */
+
+export type MapNode = {
+  id: string;
+  title: string;
+  type: MemoryType;
+  snippet: string;
+  created_at: string;
+  has_image: boolean;
+  x: number;
+  y: number;
+  cluster: number;
+};
+
+export type MapEdge = { source: string; target: string; similarity: number };
+
+export type MemoryMap = { nodes: MapNode[]; edges: MapEdge[]; clusters: number };
+
+export function getMemoryMap(): Promise<Result<MemoryMap>> {
+  return request<MemoryMap>("/memories/map");
+}

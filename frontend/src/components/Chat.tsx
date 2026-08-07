@@ -27,7 +27,13 @@ function localId(): string {
   return `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export default function Chat({ onOpenArchive }: { onOpenArchive?: () => void }) {
+export default function Chat({
+  onOpenArchive,
+  onOpenMap,
+}: {
+  onOpenArchive?: () => void;
+  onOpenMap?: () => void;
+}) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
@@ -171,6 +177,24 @@ export default function Chat({ onOpenArchive }: { onOpenArchive?: () => void }) 
           MERROR
         </h1>
 
+        {onOpenMap && (
+          <button
+            type="button"
+            onClick={onOpenMap}
+            aria-label="Open the memory map"
+            title="See the archive as a map"
+            className="ml-auto rounded-lg px-2 py-1 text-white/30 transition-colors hover:text-white/70"
+          >
+            {/* Connected nodes: the archive as a shape. */}
+            <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.2">
+              <circle cx="4" cy="4.5" r="1.8" />
+              <circle cx="12" cy="6.5" r="1.6" />
+              <circle cx="7" cy="12" r="1.6" />
+              <path d="M5.6 5.3 10.4 6M5 6.2 6.5 10.4M8.5 11.2 11 8" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => {
@@ -181,7 +205,7 @@ export default function Chat({ onOpenArchive }: { onOpenArchive?: () => void }) 
           }}
           aria-pressed={voiceMode}
           title={voiceMode ? "Replies are spoken aloud" : "Replies are text only"}
-          className={`ml-auto flex items-center gap-1.5 rounded-lg px-2 py-1 text-[0.65rem] uppercase tracking-[0.15em] transition-colors ${
+          className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[0.65rem] uppercase tracking-[0.15em] transition-colors ${
             voiceMode ? "text-white/80" : "text-white/30 hover:text-white/60"
           }`}
         >
