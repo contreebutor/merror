@@ -12,9 +12,9 @@ Anthropic (for reasoning) and ElevenLabs (for voice) — nothing else, nowhere e
 
 ## Status
 
-Under active construction, built in reviewable slices. Currently at **Slice 4 —
-vector store**: memories can be stored, searched, and deleted locally through
-internal functions. No HTTP routes, chat, or voice yet.
+Under active construction, built in reviewable slices. Currently at **Slice 5 —
+raw-text ingestion**: text can be posted to the API, embedded locally, and
+stored. No document/image upload, chat, or voice yet.
 
 ## Architecture
 

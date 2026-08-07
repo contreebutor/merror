@@ -7,3 +7,4 @@ chromadb==1.5.9
 
 # Dev
 pytest==9.0.1
+httpx==0.28.1

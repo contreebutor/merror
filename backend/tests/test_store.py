@@ -1,27 +1,9 @@
-"""Vector store CRUD tests.
-
-Each test runs against a throwaway Chroma directory so the real memory store is
-never touched.
-"""
+"""Vector store CRUD tests."""
 
 import pytest
 
 from app import store
 from app.models import MemoryType
-
-
-@pytest.fixture(autouse=True)
-def temp_store(tmp_path, monkeypatch):
-    """Point the store at a fresh directory for every test."""
-    from app.config import get_settings
-
-    settings = get_settings()
-    monkeypatch.setattr(settings, "chroma_dir", tmp_path / "chroma")
-    monkeypatch.setattr(store, "_client", None)
-    monkeypatch.setattr(store, "_collection", None)
-    yield
-    store._client = None
-    store._collection = None
 
 
 def test_add_and_get_roundtrip():
