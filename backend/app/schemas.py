@@ -10,7 +10,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.models import Memory, MemoryType
+from app.models import (
+    Conversation,
+    ConversationMessage,
+    Memory,
+    MemoryType,
+    MessageRole,
+    SearchResult,
+)
 
 # A generous ceiling for a single pasted note. Long-form material belongs in a
 # document upload (Slice 6), which chunks properly instead of storing one blob.
@@ -132,3 +139,137 @@ class DeleteResponse(BaseModel):
     id: str
     deleted: bool
     image_deleted: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Chat and conversations
+# ---------------------------------------------------------------------------
+
+MAX_MESSAGE_LENGTH = 20_000
+
+
+class ChatRequest(BaseModel):
+    """Body of POST /chat."""
+
+    message: str = Field(..., description="What to say to the mirror.")
+    conversation_id: str | None = Field(
+        None, description="Continue a conversation. Omit to start a new one."
+    )
+
+    @field_validator("message")
+    @classmethod
+    def message_must_be_meaningful(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Message cannot be empty or whitespace only.")
+        if len(stripped) > MAX_MESSAGE_LENGTH:
+            raise ValueError(
+                f"Message is {len(stripped)} characters, over the "
+                f"{MAX_MESSAGE_LENGTH} limit."
+            )
+        return stripped
+
+
+class RetrievedMemory(BaseModel):
+    """A memory that informed a reply, for showing the reply's sources."""
+
+    id: str
+    title: str
+    type: MemoryType
+    snippet: str
+    score: float
+
+    @classmethod
+    def from_result(cls, result: SearchResult) -> "RetrievedMemory":
+        return cls(
+            id=result.memory.id,
+            title=result.memory.title or result.memory.source,
+            type=result.memory.type,
+            snippet=result.matched_chunk.strip()[:300],
+            score=result.score,
+        )
+
+
+class MessageResponse(BaseModel):
+    """One turn in a conversation."""
+
+    id: str
+    role: MessageRole
+    content: str
+    created_at: datetime
+    memory_ids: list[str] = []
+
+    @classmethod
+    def from_message(cls, message: ConversationMessage) -> "MessageResponse":
+        return cls(
+            id=message.id,
+            role=message.role,
+            content=message.content,
+            created_at=message.created_at,
+            memory_ids=message.memory_ids,
+        )
+
+
+class ChatResponse(BaseModel):
+    """The reply to a chat message, with the memories behind it."""
+
+    conversation_id: str
+    message: MessageResponse
+    retrieved: list[RetrievedMemory] = Field(
+        default_factory=list,
+        description="Memories used as context, so the reply's sources are visible.",
+    )
+
+
+class ConversationSummary(BaseModel):
+    """A conversation as it appears in a list — no message bodies."""
+
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    message_count: int
+
+    @classmethod
+    def from_conversation(cls, conversation: Conversation) -> "ConversationSummary":
+        return cls(
+            id=conversation.id,
+            title=conversation.title or "Untitled",
+            created_at=conversation.created_at,
+            updated_at=conversation.updated_at,
+            message_count=conversation.message_count,
+        )
+
+
+class ConversationResponse(BaseModel):
+    """A conversation with all of its messages."""
+
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    messages: list[MessageResponse]
+
+    @classmethod
+    def from_conversation(cls, conversation: Conversation) -> "ConversationResponse":
+        return cls(
+            id=conversation.id,
+            title=conversation.title or "Untitled",
+            created_at=conversation.created_at,
+            updated_at=conversation.updated_at,
+            messages=[MessageResponse.from_message(m) for m in conversation.messages],
+        )
+
+
+class ConversationListResponse(BaseModel):
+    """All stored conversations, most recently updated first."""
+
+    conversations: list[ConversationSummary]
+    total: int
+
+
+class PromoteRequest(BaseModel):
+    """Body of POST /conversations/{id}/promote."""
+
+    message_id: str = Field(..., description="Which message to remember.")
+    title: str = Field("", max_length=200, description="Optional label.")

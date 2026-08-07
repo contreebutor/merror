@@ -123,12 +123,21 @@ class FakeStopDetails:
 
 
 @dataclass
+class FakeUsage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+
+
+@dataclass
 class FakeMessage:
     """Stand-in for anthropic.types.Message, with only the fields we read."""
 
     content: list = field(default_factory=list)
     stop_reason: str = "end_turn"
     stop_details: FakeStopDetails | None = None
+    usage: FakeUsage = field(default_factory=FakeUsage)
 
 
 class FakeMessages:

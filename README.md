@@ -12,9 +12,9 @@ Anthropic (for reasoning) and ElevenLabs (for voice) — nothing else, nowhere e
 
 ## Status
 
-Under active construction, built in reviewable slices. Currently at **Slice 8 —
-memory management**: memories can be ingested, listed, searched, and deleted
-through the API. No chat, voice, or UI yet.
+Under active construction, built in reviewable slices. Currently at **Slice 9 —
+RAG chat**: the backend is functionally complete for text. You can converse with
+your archive through the API. No UI or voice yet.
 
 ## Architecture
 
@@ -174,6 +174,11 @@ Full interactive docs at http://localhost:8000/docs.
 | `GET` | `/memories/{id}/image` | The original image for an image memory |
 | `DELETE` | `/memories/{id}` | Forget a memory, chunks and image included |
 | `GET` | `/memories/supported-types` | Accepted file types and size limits |
+| `POST` | `/chat` | Say something; retrieves memories and replies |
+| `GET` | `/conversations` | List past conversations |
+| `GET` | `/conversations/{id}` | Read one conversation |
+| `DELETE` | `/conversations/{id}` | Delete a conversation |
+| `POST` | `/conversations/{id}/promote` | Turn a message into a memory |
 | `GET` | `/config/status` | Which features have their keys configured |
 
 **Search is semantic, not keyword.** `?q=` embeds the query locally and compares
@@ -184,6 +189,30 @@ memory about walking at dawn that shares none of those words. Results carry a
 List responses return **snippets only** — fetch a single memory for its full
 text — and never include server filesystem paths. Image memories expose
 `has_image: true`; the bytes come from `/memories/{id}/image`.
+
+## Chat and conversations
+
+Each message retrieves the most relevant memories from the archive (top 6, above
+a 0.30 similarity floor so weak matches don't invite the model to invent
+connections) and puts them in front of Claude as context. Replies come back with
+the list of memories that informed them, so you can always see the sources.
+
+**Conversations are stored separately from the memory archive.** They live as
+plain JSON under `backend/data/conversations/` — readable without this app,
+since it's your own record of your thinking — and are **not** embedded
+automatically. A message becomes a searchable memory only when you promote it
+via `POST /conversations/{id}/promote`.
+
+That separation is deliberate. Auto-embedding a chat would mean Claude's
+speculation about you gets retrieved later as though it were established fact,
+and then it builds on its own guesses. Promotion keeps the archive to things you
+decided were worth remembering. Promoted memories are independent — deleting the
+conversation doesn't remove them.
+
+Memory text reaching the model is wrapped in `<memories>` tags, and the system
+prompt states that archived text is data and never instruction — so an uploaded
+document containing "ignore previous instructions" is treated as a fact about
+that document.
 
 Tests:
 

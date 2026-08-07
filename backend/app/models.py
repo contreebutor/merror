@@ -56,6 +56,44 @@ class SearchResult(BaseModel):
     matched_chunk: str
 
 
+class MessageRole(str, Enum):
+    """Who said a thing."""
+
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class ConversationMessage(BaseModel):
+    """One turn in a conversation."""
+
+    id: str
+    role: MessageRole
+    content: str
+    created_at: datetime
+    memory_ids: list[str] = Field(
+        default_factory=list,
+        description="Memories retrieved to answer this turn; assistant turns only.",
+    )
+
+
+class Conversation(BaseModel):
+    """A stored conversation.
+
+    Lives on disk as JSON, separate from the vector store — a chat turn becomes
+    a searchable memory only when explicitly promoted.
+    """
+
+    id: str
+    title: str = ""
+    created_at: datetime
+    updated_at: datetime
+    messages: list[ConversationMessage] = Field(default_factory=list)
+
+    @property
+    def message_count(self) -> int:
+        return len(self.messages)
+
+
 def utcnow() -> datetime:
     """Timezone-aware current time. Used everywhere instead of naive now()."""
     return datetime.now(timezone.utc)
