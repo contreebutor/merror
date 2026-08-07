@@ -22,8 +22,12 @@ from app.documents import (
     extract_text,
 )
 from app.models import MemoryType
+from app.projection import build_layout
 from app.schemas import (
     DeleteResponse,
+    MapEdge,
+    MapNode,
+    MemoryMapResponse,
     MemoryListResponse,
     MemoryResponse,
     MemorySummary,
@@ -223,6 +227,54 @@ async def supported_types() -> dict[str, object]:
         "image_extensions": sorted(SUPPORTED_IMAGE_TYPES),
         "image_max_bytes": MAX_IMAGE_BYTES,
     }
+
+
+@router.get(
+    "/map",
+    response_model=MemoryMapResponse,
+    summary="The archive laid out by meaning",
+)
+async def memory_map() -> MemoryMapResponse:
+    """Project every memory into 2D and connect the ones that are close.
+
+    Positions come from a PCA of the stored embeddings, so the layout is
+    deterministic — the same archive always draws the same map.
+    """
+    positions, edges = build_layout(store.get_memory_embeddings())
+    if not positions:
+        return MemoryMapResponse(nodes=[], edges=[], clusters=0)
+
+    memories = {memory.id: memory for memory in store.list_memories()}
+
+    nodes = []
+    for memory_id, (x, y, cluster) in positions.items():
+        memory = memories.get(memory_id)
+        if memory is None:
+            continue  # deleted between the two reads
+        nodes.append(
+            MapNode(
+                id=memory.id,
+                title=memory.title or memory.source or "Untitled",
+                type=memory.type,
+                snippet=memory.snippet,
+                created_at=memory.created_at,
+                has_image=bool(memory.file_path),
+                x=x,
+                y=y,
+                cluster=cluster,
+            )
+        )
+
+    known = {node.id for node in nodes}
+    return MemoryMapResponse(
+        nodes=nodes,
+        edges=[
+            MapEdge(source=a, target=b, similarity=score)
+            for a, b, score in edges
+            if a in known and b in known
+        ],
+        clusters=len({node.cluster for node in nodes}),
+    )
 
 
 # ---------------------------------------------------------------------------

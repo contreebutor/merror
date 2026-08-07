@@ -299,3 +299,38 @@ class SpeakRequest(BaseModel):
         if not stripped:
             raise ValueError("There is nothing to say.")
         return stripped
+
+
+# ---------------------------------------------------------------------------
+# Memory map
+# ---------------------------------------------------------------------------
+
+
+class MapNode(BaseModel):
+    """A memory placed on the semantic map."""
+
+    id: str
+    title: str
+    type: MemoryType
+    snippet: str
+    created_at: datetime
+    has_image: bool
+    x: float = Field(description="Horizontal position in [-1, 1].")
+    y: float = Field(description="Vertical position in [-1, 1].")
+    cluster: int = Field(description="Which group of related memories this belongs to.")
+
+
+class MapEdge(BaseModel):
+    """A link between two memories that are close in meaning."""
+
+    source: str
+    target: str
+    similarity: float
+
+
+class MemoryMapResponse(BaseModel):
+    """The archive as a shape."""
+
+    nodes: list[MapNode]
+    edges: list[MapEdge]
+    clusters: int

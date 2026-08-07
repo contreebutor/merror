@@ -312,3 +312,30 @@ def delete_memory(memory_id: str) -> bool:
     collection.delete(ids=existing["ids"])
     logger.info("Deleted memory %s (%d chunk(s))", memory_id, len(existing["ids"]))
     return True
+
+
+def get_memory_embeddings() -> dict[str, list[float]]:
+    """One embedding per memory, for laying out the map.
+
+    A multi-chunk document has several vectors; they are averaged so each
+    memory is a single point. The mean of a document's chunks is a reasonable
+    stand-in for the document's overall position in meaning-space.
+    """
+    result = get_collection().get(include=["metadatas", "embeddings"])
+    raw = result.get("embeddings")
+    if raw is None or len(raw) == 0:
+        return {}
+
+    grouped: dict[str, list] = {}
+    for meta, embedding in zip(result["metadatas"], raw):
+        grouped.setdefault(str(meta["memory_id"]), []).append(embedding)
+
+    averaged: dict[str, list[float]] = {}
+    for memory_id, vectors in grouped.items():
+        if len(vectors) == 1:
+            averaged[memory_id] = list(vectors[0])
+        else:
+            columns = zip(*vectors)
+            averaged[memory_id] = [sum(values) / len(vectors) for values in columns]
+
+    return averaged
