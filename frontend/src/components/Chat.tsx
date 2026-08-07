@@ -1,11 +1,10 @@
 "use client";
 
 /**
- * The chat surface.
+ * The chat surface — a glass panel floating over the animated gradient.
  *
- * Deliberately unstyled beyond layout — Slice 11 adds the glass and gradient.
- * Everything here is about behaviour: sending, pending state, failure states,
- * and showing which memories informed a reply.
+ * Slice 11 is a visual pass only: the behaviour here (optimistic send, restore
+ * on failure, source disclosure) is unchanged from Slice 10.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -86,97 +85,122 @@ export default function Chat() {
   }
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="border-b border-white/15 px-4 py-3">
-        <h1 className="text-sm font-light tracking-[0.3em]">MERROR</h1>
-      </header>
+    <main className="flex h-dvh items-stretch justify-center p-3 sm:p-6">
+      <div className="glass flex w-full max-w-3xl flex-col overflow-hidden rounded-3xl">
+        <header className="glass-divider shrink-0 border-b px-6 py-4">
+          <h1 className="text-[0.7rem] font-light tracking-[0.42em] text-white/80">
+            MERROR
+          </h1>
+        </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="mx-auto flex max-w-2xl flex-col gap-6">
-          {turns.length === 0 && !pending && (
-            <p className="py-16 text-center text-sm opacity-40">
-              Say something to your archive.
-            </p>
-          )}
+        <div className="subtle-scroll flex-1 overflow-y-auto px-6 py-8">
+          <div className="flex flex-col gap-7">
+            {turns.length === 0 && !pending && (
+              <p className="py-20 text-center text-sm font-light text-white/35">
+                Say something to your archive.
+              </p>
+            )}
 
-          {turns.map((turn) => (
-            <article key={turn.id} className="flex flex-col gap-2">
-              <div className="text-xs uppercase tracking-wider opacity-40">
-                {turn.role === "user" ? "You" : "Mirror"}
+            {turns.map((turn) => (
+              <article key={turn.id} className="flex flex-col gap-2">
+                <div className="text-[0.65rem] uppercase tracking-[0.2em] text-white/35">
+                  {turn.role === "user" ? "You" : "Mirror"}
+                </div>
+                <div
+                  className={
+                    turn.role === "user"
+                      ? "whitespace-pre-wrap leading-relaxed text-white/75"
+                      : "whitespace-pre-wrap leading-relaxed text-white/95"
+                  }
+                >
+                  {turn.content}
+                </div>
+
+                {turn.retrieved && turn.retrieved.length > 0 && (
+                  <details className="group mt-1.5">
+                    <summary className="cursor-pointer list-none text-xs text-white/35 transition-colors hover:text-white/60">
+                      <span className="inline-block transition-transform group-open:rotate-90">
+                        ›
+                      </span>{" "}
+                      Drew on {turn.retrieved.length}{" "}
+                      {turn.retrieved.length === 1 ? "memory" : "memories"}
+                    </summary>
+                    <ul className="mt-3 flex flex-col gap-3 border-l border-white/10 pl-4">
+                      {turn.retrieved.map((memory) => (
+                        <li key={memory.id} className="text-xs">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-white/65">
+                              {memory.title || memory.type}
+                            </span>
+                            <span className="text-white/25">
+                              {Math.round(memory.score * 100)}%
+                            </span>
+                          </div>
+                          <p className="mt-1 leading-relaxed text-white/40">
+                            {memory.snippet}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </article>
+            ))}
+
+            {pending && (
+              <div className="flex flex-col gap-2">
+                <div className="text-[0.65rem] uppercase tracking-[0.2em] text-white/35">
+                  Mirror
+                </div>
+                <div className="animate-pulse text-sm text-white/35">Thinking…</div>
               </div>
-              <div className="whitespace-pre-wrap leading-relaxed">{turn.content}</div>
+            )}
 
-              {turn.retrieved && turn.retrieved.length > 0 && (
-                <details className="mt-1 text-xs opacity-50">
-                  <summary className="cursor-pointer">
-                    Drew on {turn.retrieved.length}{" "}
-                    {turn.retrieved.length === 1 ? "memory" : "memories"}
-                  </summary>
-                  <ul className="mt-2 flex flex-col gap-2 border-l border-white/15 pl-3">
-                    {turn.retrieved.map((memory) => (
-                      <li key={memory.id}>
-                        <span className="opacity-70">{memory.title || memory.type}</span>{" "}
-                        <span className="opacity-40">
-                          ({Math.round(memory.score * 100)}% match)
-                        </span>
-                        <p className="mt-0.5 opacity-60">{memory.snippet}</p>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </article>
-          ))}
+            {error && (
+              <div
+                role="alert"
+                className="rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm"
+              >
+                <p className="text-red-200/90">{error.message}</p>
+                {error.needsConfiguration && (
+                  <p className="mt-2 text-xs leading-relaxed text-white/50">
+                    Copy <code className="text-white/70">.env.example</code> to{" "}
+                    <code className="text-white/70">.env</code>, add your{" "}
+                    <code className="text-white/70">ANTHROPIC_API_KEY</code>, and
+                    restart the backend.
+                  </p>
+                )}
+              </div>
+            )}
 
-          {pending && (
-            <div className="flex flex-col gap-2">
-              <div className="text-xs uppercase tracking-wider opacity-40">Mirror</div>
-              <div className="animate-pulse text-sm opacity-40">Thinking…</div>
-            </div>
-          )}
+            <div ref={endRef} />
+          </div>
+        </div>
 
-          {error && (
-            <div
-              role="alert"
-              className="rounded border border-red-500/40 bg-red-500/5 p-3 text-sm"
+        <div className="glass-divider shrink-0 border-t px-4 py-4 sm:px-6">
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={onKeyDown}
+              rows={1}
+              placeholder="Say something…"
+              aria-label="Message"
+              disabled={pending}
+              className="glass-raised max-h-40 flex-1 resize-none rounded-2xl px-4 py-3 text-sm text-white/90 outline-none transition-colors placeholder:text-white/30 focus:border-white/25 disabled:opacity-40"
+            />
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={pending || !input.trim()}
+              className="glass-button rounded-2xl px-5 py-3 text-sm text-white/85 disabled:opacity-25"
             >
-              <p className="text-red-400">{error.message}</p>
-              {error.needsConfiguration && (
-                <p className="mt-2 opacity-60">
-                  Copy <code>.env.example</code> to <code>.env</code>, add your{" "}
-                  <code>ANTHROPIC_API_KEY</code>, and restart the backend.
-                </p>
-              )}
-            </div>
-          )}
-
-          <div ref={endRef} />
+              Send
+            </button>
+          </div>
         </div>
       </div>
-
-      <div className="border-t border-white/15 px-4 py-4">
-        <div className="mx-auto flex max-w-2xl items-end gap-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={onKeyDown}
-            rows={1}
-            placeholder="Say something…"
-            aria-label="Message"
-            disabled={pending}
-            className="flex-1 resize-none rounded border border-white/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-white/40 disabled:opacity-50"
-          />
-          <button
-            type="button"
-            onClick={() => void submit()}
-            disabled={pending || !input.trim()}
-            className="rounded border border-white/15 px-4 py-2 text-sm disabled:opacity-30"
-          >
-            Send
-          </button>
-        </div>
-      </div>
-    </div>
+    </main>
   );
 }

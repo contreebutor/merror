@@ -12,10 +12,10 @@ Anthropic (for reasoning) and ElevenLabs (for voice) — nothing else, nowhere e
 
 ## Status
 
-Under active construction, built in reviewable slices. Currently at **Slice 10 —
-basic chat UI**: usable end to end. Add an `ANTHROPIC_API_KEY`, start both
-services, and you can talk to your archive in the browser. The interface is
-deliberately plain — the visual design lands in Slice 11.
+Under active construction, built in reviewable slices. Currently at **Slice 11 —
+visual design**: usable end to end, with the glass-and-gradient interface in
+place. Add an `ANTHROPIC_API_KEY`, start both services, and you can talk to your
+archive in the browser. No memory sidebar, upload UI, or voice yet.
 
 ## Architecture
 
@@ -222,7 +222,31 @@ cd backend
 .venv/bin/python -m pytest
 ```
 
-## Privacy
+## Interface
+
+Dark by design — a dark field lets the background read as light moving behind
+glass rather than as a coloured page.
+
+The background is four large, heavily blurred colour fields drifting on
+**coprime periods** (37s, 43s, 53s, 61s), so the composition takes hours to
+repeat rather than looping visibly every minute. It is pure CSS: only
+`transform` is animated, which the compositor owns, so nothing runs per frame
+and the 90px blur is rasterised once. No canvas, no WebGL, no JavaScript.
+
+Fine noise sits over the gradient. Large smooth gradients band badly on 8-bit
+displays; a little grain dithers the steps away.
+
+Glass panels use `backdrop-filter: blur(24px) saturate(150%)` — the saturation
+lift matters, since blur alone drains colour to grey — plus a hairline inset
+highlight along the top edge for the bevel that reads as physical.
+
+Two things the design gives way on:
+
+- **`prefers-reduced-motion`** holds the gradient still. It is decorative; if
+  someone has asked their system for less motion, they get the composition
+  without the drift.
+- **Browsers without `backdrop-filter`** get a near-opaque panel instead, so
+  content stays legible rather than dissolving into an outline.
 
 Your memories, uploaded files, vector database, and conversation history are all
 gitignored and stay on this machine. Only chat messages (with retrieved memory

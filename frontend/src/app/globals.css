@@ -1,8 +1,28 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+   Palette
+   Dark by design: MERROR is for looking inward, and a dark field lets the
+   gradient read as light moving behind glass rather than as a coloured page.
+   --------------------------------------------------------------------------- */
+
 :root {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --background: #07070b;
+  --foreground: #ececf1;
+
+  /* Aurora blobs. Muted rather than saturated — at 100px blur, vivid colours
+     turn into a lava lamp. These stay closer to weather than to neon. */
+  --aurora-1: #3b3a8f; /* indigo   */
+  --aurora-2: #1f5f6b; /* teal     */
+  --aurora-3: #6d3a63; /* mauve    */
+  --aurora-4: #8a5a3c; /* warm ember */
+
+  /* Glass. Apple's restraint: the surface is barely there, and most of the
+     effect comes from blur and a single bright hairline along the edge. */
+  --glass-surface: rgba(255, 255, 255, 0.045);
+  --glass-surface-strong: rgba(255, 255, 255, 0.07);
+  --glass-edge: rgba(255, 255, 255, 0.1);
+  --glass-edge-bright: rgba(255, 255, 255, 0.16);
 }
 
 @theme inline {
@@ -10,8 +30,232 @@
   --color-foreground: var(--foreground);
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden; /* the chat panel scrolls, the page never does */
+}
+
+/* ---------------------------------------------------------------------------
+   Animated background
+   Four large, heavily blurred blobs drifting on different periods. Because the
+   periods are coprime-ish (37s, 43s, 53s, 61s) the composition never visibly
+   repeats — it takes hours to return to the same arrangement.
+   --------------------------------------------------------------------------- */
+
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  background: var(--background);
+}
+
+.aurora::after {
+  /* Fine noise over the gradient. Large smooth gradients band badly on 8-bit
+     displays; a little grain dithers the steps away and adds a film-like
+     texture. Kept very low opacity so it reads as surface, not static. */
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.035;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.aurora-blob {
+  position: absolute;
+  border-radius: 50%;
+  /* Additive blending: overlaps brighten instead of muddying, the way light
+     actually behaves. */
+  mix-blend-mode: screen;
+  filter: blur(90px);
+  will-change: transform;
+}
+
+.aurora-blob-1 {
+  width: 55vmax;
+  height: 55vmax;
+  top: -12%;
+  left: -8%;
+  background: radial-gradient(circle at 50% 50%, var(--aurora-1), transparent 68%);
+  animation: drift-1 37s ease-in-out infinite alternate;
+}
+
+.aurora-blob-2 {
+  width: 48vmax;
+  height: 48vmax;
+  top: 22%;
+  right: -14%;
+  background: radial-gradient(circle at 50% 50%, var(--aurora-2), transparent 68%);
+  animation: drift-2 43s ease-in-out infinite alternate;
+}
+
+.aurora-blob-3 {
+  width: 52vmax;
+  height: 52vmax;
+  bottom: -18%;
+  left: 14%;
+  background: radial-gradient(circle at 50% 50%, var(--aurora-3), transparent 68%);
+  animation: drift-3 53s ease-in-out infinite alternate;
+}
+
+.aurora-blob-4 {
+  width: 38vmax;
+  height: 38vmax;
+  top: 42%;
+  left: 32%;
+  opacity: 0.75;
+  background: radial-gradient(circle at 50% 50%, var(--aurora-4), transparent 70%);
+  animation: drift-4 61s ease-in-out infinite alternate;
+}
+
+/* Only `transform` is animated — it runs on the compositor, so a 90px blur is
+   rasterised once rather than re-computed every frame. Animating position or
+   filter here would pin a core at 100%. */
+@keyframes drift-1 {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(18vw, 10vh, 0) scale(1.18);
+  }
+}
+
+@keyframes drift-2 {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.1);
+  }
+  to {
+    transform: translate3d(-16vw, 14vh, 0) scale(0.92);
+  }
+}
+
+@keyframes drift-3 {
+  from {
+    transform: translate3d(0, 0, 0) scale(0.95);
+  }
+  to {
+    transform: translate3d(14vw, -12vh, 0) scale(1.2);
+  }
+}
+
+@keyframes drift-4 {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+  to {
+    transform: translate3d(-20vw, -8vh, 0) scale(0.85);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Glass
+   --------------------------------------------------------------------------- */
+
+.glass {
+  background: var(--glass-surface);
+  /* Saturation lift keeps colour alive through the blur; without it, frosted
+     surfaces drain to grey. */
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid var(--glass-edge);
+  box-shadow:
+    0 24px 70px -20px rgba(0, 0, 0, 0.7),
+    /* A bright hairline just inside the top edge — the highlight that reads as
+       a physical bevel catching the light. */
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.07);
+}
+
+/* For elements sitting on top of glass — inputs, raised rows. */
+.glass-raised {
+  background: var(--glass-surface-strong);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  border: 1px solid var(--glass-edge);
+}
+
+.glass-divider {
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+/* Interactive glass: brightens on hover, settles on press. */
+.glass-button {
+  background: var(--glass-surface-strong);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  border: 1px solid var(--glass-edge);
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    transform 120ms ease;
+}
+
+.glass-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--glass-edge-bright);
+}
+
+.glass-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* Fallback for browsers without backdrop-filter: lean on opacity so panels stay
+   legible instead of turning into invisible outlines. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .glass-raised,
+  .glass-button {
+    background: rgba(18, 18, 26, 0.88);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Motion preferences
+   The drifting background is decorative. Anyone who has asked their system to
+   reduce motion gets the same composition, held still.
+   --------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-blob {
+    animation: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Scrollbars, so the chat column doesn't get a grey system bar over the glass. */
+.subtle-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.subtle-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.subtle-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.subtle-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+}
+
+.subtle-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.26);
 }
