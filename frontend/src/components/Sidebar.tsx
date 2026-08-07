@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import AddMemory from "@/components/AddMemory";
 import MemoryTypeIcon from "@/components/MemoryTypeIcon";
 import {
   ABORTED,
@@ -19,14 +20,7 @@ import { relativeTime } from "@/lib/format";
 /** Wait for typing to settle before searching, so each keystroke isn't a request. */
 const SEARCH_DEBOUNCE_MS = 250;
 
-export default function Sidebar({
-  refreshToken = 0,
-  onClose,
-}: {
-  /** Bump to force a reload — used after an upload adds a memory. */
-  refreshToken?: number;
-  onClose?: () => void;
-}) {
+export default function Sidebar({ onClose }: { onClose?: () => void }) {
   const [memories, setMemories] = useState<MemorySummary[]>([]);
   const [total, setTotal] = useState(0);
   const [query, setQuery] = useState("");
@@ -34,6 +28,9 @@ export default function Sidebar({
   const [error, setError] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  // Bumped after an ingest so the list reloads without a manual refresh.
+  const [refreshToken, setRefreshToken] = useState(0);
 
   // Cancels the previous search so a slow early request can't land after a
   // fast later one and repaint the list with stale results.
@@ -91,17 +88,39 @@ export default function Sidebar({
         <h2 className="text-[0.65rem] uppercase tracking-[0.25em] text-white/45">
           Archive{total > 0 && <span className="ml-2 text-white/25">{total}</span>}
         </h2>
-        {onClose && (
+        <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={onClose}
-            aria-label="Close archive"
-            className="rounded-lg px-2 py-1 text-white/40 transition-colors hover:text-white/80 lg:hidden"
+            onClick={() => setAdding((open) => !open)}
+            aria-label={adding ? "Cancel adding a memory" : "Add a memory"}
+            aria-expanded={adding}
+            className={`rounded-lg px-2 py-0.5 text-lg leading-none transition-colors ${
+              adding ? "text-white/80" : "text-white/40 hover:text-white/80"
+            }`}
           >
-            ✕
+            {adding ? "\u2212" : "+"}
           </button>
-        )}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close archive"
+              className="rounded-lg px-2 py-1 text-white/40 transition-colors hover:text-white/80 lg:hidden"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </header>
+
+      {adding && (
+        <div className="shrink-0 px-4 pt-4">
+          <AddMemory
+            onAdded={() => setRefreshToken((n) => n + 1)}
+            onClose={() => setAdding(false)}
+          />
+        </div>
+      )}
 
       <div className="shrink-0 px-4 pt-4">
         <input

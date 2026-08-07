@@ -87,9 +87,14 @@ export const ABORTED = "aborted" as const;
 async function request<T>(path: string, init?: RequestInit): Promise<Result<T>> {
   let response: Response;
   try {
+    const isFormData = init?.body instanceof FormData;
     response = await fetch(`${API_URL}${path}`, {
-      headers: { "Content-Type": "application/json" },
       ...init,
+      headers: {
+        // Let the browser set multipart/form-data with its own boundary.
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
+        ...init?.headers,
+      },
     });
   } catch (cause) {
     // A superseded search is not a failure — the caller aborted it on purpose.
@@ -204,4 +209,54 @@ export function deleteMemory(id: string): Promise<Result<DeleteResult>> {
 /** URL for an image memory's original file. */
 export function memoryImageUrl(id: string): string {
   return `${API_URL}/memories/${id}/image`;
+}
+
+/* --------------------------------------------------------------------------
+   Ingestion
+   -------------------------------------------------------------------------- */
+
+export type MemoryDetail = MemorySummary & { content: string };
+
+export type SupportedTypes = {
+  extensions: string[];
+  max_bytes: number;
+  image_extensions: string[];
+  image_max_bytes: number;
+};
+
+export function getSupportedTypes(): Promise<Result<SupportedTypes>> {
+  return request<SupportedTypes>("/memories/supported-types");
+}
+
+export function createTextMemory(
+  content: string,
+  title = "",
+): Promise<Result<MemoryDetail>> {
+  return request<MemoryDetail>("/memories/text", {
+    method: "POST",
+    body: JSON.stringify({ content, title }),
+  });
+}
+
+/**
+ * Upload a file as a document or image memory.
+ *
+ * Deliberately does not set Content-Type: the browser must generate the
+ * multipart boundary itself, and an explicit header would omit it and make the
+ * body unparseable server-side.
+ */
+export function uploadFile(
+  kind: "document" | "image",
+  file: File,
+  title = "",
+): Promise<Result<MemoryDetail>> {
+  const form = new FormData();
+  form.append("file", file);
+  if (title) form.append("title", title);
+
+  return request<MemoryDetail>(`/memories/${kind}`, {
+    method: "POST",
+    body: form,
+    headers: {},
+  });
 }
