@@ -4,6 +4,8 @@ pydantic==2.13.1
 pydantic-settings==2.13.1
 python-multipart==0.0.20
 chromadb==1.5.9
+pypdf==6.15.0
+python-docx==1.2.0
 
 # Dev
 pytest==9.0.1

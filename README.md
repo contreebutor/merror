@@ -12,9 +12,9 @@ Anthropic (for reasoning) and ElevenLabs (for voice) — nothing else, nowhere e
 
 ## Status
 
-Under active construction, built in reviewable slices. Currently at **Slice 5 —
-raw-text ingestion**: text can be posted to the API, embedded locally, and
-stored. No document/image upload, chat, or voice yet.
+Under active construction, built in reviewable slices. Currently at **Slice 6 —
+document ingestion**: text and PDF/DOCX/TXT/MD uploads are parsed, chunked, and
+embedded locally. No image upload, chat, or voice yet.
 
 ## Architecture
 
@@ -125,6 +125,29 @@ about 80 MB). Memory content is never sent anywhere to be embedded.
 One Chroma record holds one *chunk*. A short note is a single chunk; a long
 document becomes many, sharing a `memory_id`. That keeps retrieval accurate on
 long documents while still letting a memory be listed and deleted as one unit.
+
+### Chunking
+
+Documents are split **paragraph-aware with a size cap** (`app/chunking.py`):
+
+1. Split on blank lines into paragraphs.
+2. Pack consecutive paragraphs together up to **1200 characters**, so a run of
+   short notes becomes one coherent chunk rather than context-free fragments.
+3. Split any oversized paragraph at **sentence boundaries**, never mid-sentence.
+4. Carry **150 characters** of trailing context into the next chunk, so a fact
+   spanning a boundary stays retrievable from both sides.
+
+The 1200-character cap keeps chunks inside the embedding model's 256 word-piece
+window; text beyond that window is silently ignored rather than erroring, which
+is why the cap matters.
+
+### Supported uploads
+
+`.pdf`, `.docx`, `.txt`, `.md` — up to 25 MB, parsed in-process. Legacy `.doc`
+is not supported (different binary format); re-save as `.docx`. Scanned PDFs
+have no text layer and are rejected with a message pointing at image upload.
+Uploaded documents are **not retained on disk** — only the extracted text is
+stored, since that is all retrieval needs.
 
 Tests:
 
