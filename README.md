@@ -10,12 +10,146 @@ self-understanding through conversation with "yourself."
 Everything runs on your machine. The only data that leaves it goes directly to
 Anthropic (for reasoning) and ElevenLabs (for voice) — nothing else, nowhere else.
 
-## Status
+---
 
-Under active construction, built in reviewable slices. Currently at **Slice 12 —
-archive sidebar**: chat plus a searchable, deletable memory list. Add an
-`ANTHROPIC_API_KEY`, start both services, and you can talk to your archive in
-the browser. Adding memories still needs the API — the upload UI is Slice 13.
+## What it does
+
+- **Chat** grounded in your own archive, with the sources behind every reply
+  visible.
+- **Remember** pasted text, documents (PDF/DOCX/TXT/MD), and images.
+- **Search** by meaning rather than keyword — *"quiet reflection in the early
+  hours"* finds a note about walking at dawn.
+- **Speak and listen** — record a voice note, hear replies read aloud.
+- **See the shape of it** — an interactive map of the archive, memories placed
+  by meaning and clustered by theme.
+- **Forget** anything, permanently, including the stored file.
+
+## Requirements
+
+- **Node.js** 20 or newer (developed against v25)
+- **Python 3.12** — not 3.13 or 3.14. ChromaDB's dependency chain does not ship
+  wheels for those yet, and building from source is a bad time.
+- About **1 GB of disk** for the two local models, downloaded on first use:
+  the embedding model (~80 MB) and Whisper (~150 MB at the default size).
+
+## Setup
+
+```bash
+git clone <your-repo-url> merror-app
+cd merror-app
+
+# Configuration — one file drives both services
+cp .env.example .env
+#   then open .env and add your ANTHROPIC_API_KEY
+
+# Backend
+cd backend
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Frontend
+cd ../frontend
+npm install
+```
+
+### API keys
+
+| Key | Needed for | Without it |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Chat, image understanding | Chat returns a `503`; text and document ingest still work |
+| `ELEVENLABS_API_KEY` | Spoken replies | Everything works except speech out |
+
+**Speech-to-text needs no key.** Whisper runs locally, so you can record voice
+notes on a completely unconfigured install.
+
+Missing keys never prevent startup. The backend prints a banner naming what is
+absent, `GET /config/status` reports which features are available, and the UI
+shows a notice on load rather than letting you discover it by failing.
+
+## Running
+
+Two terminals:
+
+```bash
+# Terminal 1 — backend
+cd backend && source .venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+```
+
+```bash
+# Terminal 2 — frontend
+cd frontend && npm run dev
+```
+
+| Service | URL |
+|---|---|
+| App | http://localhost:3000 |
+| API docs | http://localhost:8000/docs |
+
+**First run is slower.** The embedding model downloads on the first memory you
+add, and Whisper on the first voice note. Both are cached afterwards.
+
+### Running it for real
+
+`--reload` watches for file changes and is for development. For everyday use:
+
+```bash
+cd backend && source .venv/bin/activate
+uvicorn app.main:app --port 8000
+
+cd frontend && npm run build && npm start
+```
+
+The production build is meaningfully faster to load than the dev server.
+
+## Deployment: don't
+
+MERROR is designed to run on one machine, for one person, with **no
+authentication of any kind**. Anyone who can reach the backend can read every
+memory, every conversation, and every uploaded image.
+
+Both services bind to localhost by default, which is what you want. Do not put
+this on a public host or a shared network without putting real authentication in
+front of it first. There is no multi-user support, and the threat model assumes
+the only person who can reach it is you.
+
+If you want it on another device you own, an SSH tunnel is the simple answer:
+
+```bash
+ssh -L 3000:localhost:3000 -L 8000:localhost:8000 you@your-machine
+```
+
+## Where your data lives
+
+Everything is under `backend/data/`, gitignored in full:
+
+```
+backend/data/
+├── chroma/          Vector database — memories and their embeddings
+├── uploads/images/  Original images, named by memory id
+├── conversations/   One JSON file per conversation, human-readable
+└── models/          Downloaded Whisper weights
+```
+
+To back MERROR up, copy `backend/data/`. To start over, delete it.
+
+Conversations are plain JSON on purpose: it is your record of your own thinking,
+and you should be able to read it without this app.
+
+## What leaves your machine
+
+| Action | Sent where | What exactly |
+|---|---|---|
+| Chatting | Anthropic | Your message, the conversation so far, and excerpts of retrieved memories |
+| Adding an image | Anthropic | The image, so Claude can describe it |
+| Spoken replies | ElevenLabs | The reply text |
+| **Everything else** | **Nowhere** | |
+
+Embedding, search, clustering, the map, and speech-to-text all run locally.
+Adding text or a document sends nothing anywhere.
+
+---
 
 ## Architecture
 
@@ -23,143 +157,34 @@ the browser. Adding memories still needs the API — the upload UI is Slice 13.
 |---|---|
 | Frontend | Next.js 16 (App Router) + TypeScript + Tailwind 4 |
 | Backend | Python 3.12 + FastAPI |
-| Vector DB | ChromaDB (embedded, persisted to local disk) |
-| LLM | Anthropic Claude API |
-| Voice | ElevenLabs (TTS) + Whisper (STT) |
+| Vector DB | ChromaDB, embedded, persisted to local disk |
+| Embeddings | all-MiniLM-L6-v2, local, 384 dimensions |
+| LLM | Anthropic Claude (`claude-opus-5` by default) |
+| Speech in | faster-whisper, local |
+| Speech out | ElevenLabs |
+| Map | PCA + k-means on numpy, no extra dependency |
 
 ```
 merror-app/
-├── frontend/          Next.js app (UI, chat, memory views)
-│   └── src/app/       App Router pages
-├── backend/           FastAPI service (ingestion, embeddings, RAG, voice)
-│   ├── app/           Application package
-│   └── requirements.txt
-└── README.md
+├── frontend/src/
+│   ├── app/            App Router pages, global styles
+│   ├── components/     Chat, Sidebar, AddMemory, MemoryMap, Aurora
+│   └── lib/            API client, recorder hook, formatting
+├── backend/app/
+│   ├── main.py         App assembly, CORS, config reporting
+│   ├── config.py       Settings and key validation
+│   ├── store.py        ChromaDB persistence
+│   ├── chunking.py     Paragraph-aware document splitting
+│   ├── documents.py    PDF/DOCX/TXT extraction
+│   ├── vision.py       Claude image description
+│   ├── chat.py         Retrieval + prompt + reply
+│   ├── conversations.py JSON conversation storage
+│   ├── transcription.py Local Whisper
+│   ├── speech.py       ElevenLabs
+│   ├── projection.py   2D map
+│   └── routers/        HTTP routes
+└── .env.example
 ```
-
-## Requirements
-
-- **Node.js** 20+ (developed against v25)
-- **Python 3.12** — not 3.13/3.14; ChromaDB's dependency chain does not yet
-  ship wheels for those, and building from source is a bad time.
-
-## Setup
-
-### Backend
-
-```bash
-cd backend
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-```
-
-## Running
-
-Two terminals. Backend first:
-
-```bash
-cd backend
-source .venv/bin/activate
-uvicorn app.main:app --reload --port 8000
-```
-
-Then the frontend:
-
-```bash
-cd frontend
-npm run dev
-```
-
-| Service | URL |
-|---|---|
-| Frontend | http://localhost:3000 |
-| Backend | http://localhost:8000 |
-| API docs | http://localhost:8000/docs |
-
-## Configuration
-
-Copy the template and fill in your keys:
-
-```bash
-cp .env.example .env
-```
-
-A single repo-root `.env` configures both services. It is gitignored and never
-committed.
-
-| Variable | Used by | Purpose |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | backend | Chat reasoning, image understanding |
-| `ELEVENLABS_API_KEY` | backend | Text-to-speech |
-| `ANTHROPIC_MODEL` | backend | Claude model (default `claude-opus-5`) |
-| `ELEVENLABS_VOICE_ID` | backend | Voice selection |
-| `CHROMA_DIR` / `UPLOADS_DIR` | backend | Local storage paths, relative to `backend/` |
-| `FRONTEND_ORIGIN` | backend | CORS allowlist |
-| `NEXT_PUBLIC_API_URL` | frontend | Backend base URL |
-
-**Only `NEXT_PUBLIC_*` variables reach the browser.** `next.config.ts` reads the
-root `.env` through a strict prefix allowlist, so API keys stay backend-side and
-cannot end up in the client bundle.
-
-Missing keys do not prevent startup — the backend prints a banner naming what is
-absent, `GET /config/status` reports which features are available, and any route
-needing an unset key returns a `503` explaining how to fix it. This keeps the app
-usable while partially configured.
-
-Settings are read once at boot; **restart the backend after editing `.env`**.
-
-## Memory store
-
-Memories live in a local ChromaDB collection under `backend/data/chroma`.
-Embeddings are computed **on this machine** by Chroma's default model
-(all-MiniLM-L6-v2, 384 dimensions, cached to `~/.cache/chroma` on first use —
-about 80 MB). Memory content is never sent anywhere to be embedded.
-
-One Chroma record holds one *chunk*. A short note is a single chunk; a long
-document becomes many, sharing a `memory_id`. That keeps retrieval accurate on
-long documents while still letting a memory be listed and deleted as one unit.
-
-### Chunking
-
-Documents are split **paragraph-aware with a size cap** (`app/chunking.py`):
-
-1. Split on blank lines into paragraphs.
-2. Pack consecutive paragraphs together up to **1200 characters**, so a run of
-   short notes becomes one coherent chunk rather than context-free fragments.
-3. Split any oversized paragraph at **sentence boundaries**, never mid-sentence.
-4. Carry **150 characters** of trailing context into the next chunk, so a fact
-   spanning a boundary stays retrievable from both sides.
-
-The 1200-character cap keeps chunks inside the embedding model's 256 word-piece
-window; text beyond that window is silently ignored rather than erroring, which
-is why the cap matters.
-
-### Supported uploads
-
-**Documents** — `.pdf`, `.docx`, `.txt`, `.md`, up to 25 MB, parsed in-process.
-Legacy `.doc` is not supported (different binary format); re-save as `.docx`.
-Scanned PDFs have no text layer and are rejected with a message pointing at
-image upload. Documents are **not retained on disk** — only the extracted text
-is stored, since that is all retrieval needs.
-
-**Images** — `.jpg`, `.png`, `.gif`, `.webp`, up to 3.5 MB. File type is
-determined by *magic bytes*, not the extension, so a mislabelled file is
-rejected before anything is sent anywhere. Unlike documents, the original image
-**is** kept under `backend/data/uploads/images/`, named after its memory id — the
-picture itself is the thing being remembered.
-
-> **Images are the one ingestion path that leaves this machine.** The image is
-> sent to Anthropic so Claude can describe it; that description is what gets
-> embedded and searched. Everything else — text, documents, all embeddings —
-> stays local. If Claude declines to describe an image, nothing is stored.
 
 ## API
 
@@ -171,83 +196,125 @@ Full interactive docs at http://localhost:8000/docs.
 | `POST` | `/memories/document` | Remember an uploaded document |
 | `POST` | `/memories/image` | Remember an uploaded image |
 | `GET` | `/memories` | List newest-first, or search with `?q=` |
+| `GET` | `/memories/map` | The archive projected into 2D |
 | `GET` | `/memories/{id}` | One memory, with full content |
-| `GET` | `/memories/{id}/image` | The original image for an image memory |
+| `GET` | `/memories/{id}/image` | The original image |
 | `DELETE` | `/memories/{id}` | Forget a memory, chunks and image included |
-| `GET` | `/memories/supported-types` | Accepted file types and size limits |
 | `POST` | `/chat` | Say something; retrieves memories and replies |
 | `GET` | `/conversations` | List past conversations |
-| `GET` | `/conversations/{id}` | Read one conversation |
-| `DELETE` | `/conversations/{id}` | Delete a conversation |
 | `POST` | `/conversations/{id}/promote` | Turn a message into a memory |
-| `GET` | `/config/status` | Which features have their keys configured |
+| `POST` | `/voice/transcribe` | Speech to text, locally |
+| `POST` | `/voice/speak` | Text to speech |
+| `GET` | `/config/status` | Which features have their keys |
 
-**Search is semantic, not keyword.** `?q=` embeds the query locally and compares
-it against stored memories, so *"quiet reflection in the early hours"* finds a
-memory about walking at dawn that shares none of those words. Results carry a
-`score` in `[0, 1]`; plain listings carry `null`.
+## How it works
 
-List responses return **snippets only** — fetch a single memory for its full
-text — and never include server filesystem paths. Image memories expose
-`has_image: true`; the bytes come from `/memories/{id}/image`.
+### Memory store
 
-## Chat and conversations
+One Chroma record holds one *chunk*. A short note is a single chunk; a long
+document becomes many, sharing a `memory_id`. That keeps retrieval accurate on
+long documents while letting a memory be listed and deleted as one unit.
 
-Each message retrieves the most relevant memories from the archive (top 6, above
-a 0.30 similarity floor so weak matches don't invite the model to invent
-connections) and puts them in front of Claude as context. Replies come back with
-the list of memories that informed them, so you can always see the sources.
+Documents are split **paragraph-aware with a 1200-character cap** and 150
+characters of overlap, splitting at sentence boundaries when a paragraph is too
+long. The cap is not arbitrary: the embedding model truncates at 256 word-pieces
+and *silently ignores* the rest, so an oversized chunk would look fine and fail
+to embed its tail.
 
-**Conversations are stored separately from the memory archive.** They live as
-plain JSON under `backend/data/conversations/` — readable without this app,
-since it's your own record of your thinking — and are **not** embedded
-automatically. A message becomes a searchable memory only when you promote it
-via `POST /conversations/{id}/promote`.
+### Chat
 
-That separation is deliberate. Auto-embedding a chat would mean Claude's
+Each message retrieves the top 6 memories above a 0.30 similarity floor. The
+floor matters — passing weak matches as context invites the model to invent
+connections, which is the opposite of useful for a self-understanding tool.
+
+Retrieved text is wrapped in `<memories>` tags, and the system prompt states
+that archived text is **data, never instruction** — so an uploaded document
+containing "ignore previous instructions" is treated as a fact about that
+document.
+
+### Conversations
+
+Stored separately and **never auto-embedded**. A message becomes a searchable
+memory only when you promote it.
+
+That separation is deliberate: auto-embedding a chat would mean Claude's
 speculation about you gets retrieved later as though it were established fact,
-and then it builds on its own guesses. Promotion keeps the archive to things you
-decided were worth remembering. Promoted memories are independent — deleting the
-conversation doesn't remove them.
+and then it builds on its own guesses. Promoted memories are independent —
+deleting the conversation does not remove them.
 
-Memory text reaching the model is wrapped in `<memories>` tags, and the system
-prompt states that archived text is data and never instruction — so an uploaded
-document containing "ignore previous instructions" is treated as a fact about
-that document.
+### The map
 
-Tests:
+PCA and k-means on numpy rather than UMAP or t-SNE, chosen for **determinism**:
+the same archive always draws the same map, so a space meant to become familiar
+does not rearrange every visit. Edges are cut at the 90th percentile of the
+archive's own similarities rather than a fixed threshold, since absolute cosine
+values depend on the model and on how varied your archive is.
+
+The trade-off is honest: PCA separates clusters less crisply than UMAP would.
+
+### Interface
+
+Four blurred colour fields drift on coprime periods (37s, 43s, 53s, 61s), so the
+composition takes hours to repeat rather than looping visibly. Pure CSS,
+`transform` only, so the compositor owns it and nothing runs per frame.
+`prefers-reduced-motion` holds it still.
+
+## Tests
 
 ```bash
-cd backend
-.venv/bin/python -m pytest
+cd backend && .venv/bin/python -m pytest
 ```
 
-## Interface
+205 tests. They build real PDFs, DOCX files, images, and WAV audio rather than
+mocking, so parsers and sniffers are exercised as they will be in production.
+Only the two external APIs are faked. Every test runs against a throwaway data
+directory, so the suite can never touch your real archive.
 
-Dark by design — a dark field lets the background read as light moving behind
-glass rather than as a coloured page.
+Frontend checks:
 
-The background is four large, heavily blurred colour fields drifting on
-**coprime periods** (37s, 43s, 53s, 61s), so the composition takes hours to
-repeat rather than looping visibly every minute. It is pure CSS: only
-`transform` is animated, which the compositor owns, so nothing runs per frame
-and the 90px blur is rasterised once. No canvas, no WebGL, no JavaScript.
+```bash
+cd frontend && npx tsc --noEmit && npx eslint src && npm run build
+```
 
-Fine noise sits over the gradient. Large smooth gradients band badly on 8-bit
-displays; a little grain dithers the steps away.
+## Configuration reference
 
-Glass panels use `backdrop-filter: blur(24px) saturate(150%)` — the saturation
-lift matters, since blur alone drains colour to grey — plus a hairline inset
-highlight along the top edge for the bevel that reads as physical.
+| Variable | Default | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | — | Chat and image understanding |
+| `ELEVENLABS_API_KEY` | — | Spoken replies |
+| `ANTHROPIC_MODEL` | `claude-opus-5` | Claude model |
+| `ELEVENLABS_VOICE_ID` | Rachel | Which voice |
+| `ELEVENLABS_MODEL` | `eleven_multilingual_v2` | Quality vs speed |
+| `WHISPER_MODEL` | `base` | `tiny`…`large-v3`; larger is better and slower |
+| `CHROMA_DIR` | `data/chroma` | Vector database |
+| `UPLOADS_DIR` | `data/uploads` | Stored images |
+| `WHISPER_CACHE_DIR` | `data/models` | Whisper weights |
+| `FRONTEND_ORIGIN` | `http://localhost:3000` | CORS allowlist |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Backend URL |
 
-Two things the design gives way on:
+**Only `NEXT_PUBLIC_*` variables reach the browser.** `next.config.ts` reads the
+root `.env` through a strict prefix allowlist, so API keys cannot end up in the
+client bundle.
 
-- **`prefers-reduced-motion`** holds the gradient still. It is decorative; if
-  someone has asked their system for less motion, they get the composition
-  without the drift.
-- **Browsers without `backdrop-filter`** get a near-opaque panel instead, so
-  content stays legible rather than dissolving into an outline.
+Settings are read once at boot — **restart the backend after editing `.env`**.
 
-Your memories, uploaded files, vector database, and conversation history are all
-gitignored and stay on this machine. Only chat messages (with retrieved memory
-context) and voice text reach the external APIs.
+## Troubleshooting
+
+**`pip install` fails on chromadb.** You are probably on Python 3.13+. Check
+with `python --version` inside the venv and rebuild it with `python3.12 -m venv`.
+
+**First message hangs for a while.** The embedding model is downloading. Watch
+the backend terminal.
+
+**Voice recording does nothing.** Browsers only allow microphone access on
+`localhost` or HTTPS. `localhost` is fine; an IP address like `192.168.1.5` is
+not.
+
+**Replies are not spoken.** Check `ELEVENLABS_API_KEY`, and that the voice id in
+`.env` exists on your account — a wrong one returns a `422`.
+
+**Transcription is inaccurate.** Raise `WHISPER_MODEL` to `small` or `medium`.
+Roughly three times slower, noticeably better on accents and background noise.
+
+**The map looks like a blob.** With few memories there is little variance to
+project. It gets more legible past a couple of dozen.
