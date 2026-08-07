@@ -27,8 +27,15 @@ logger = logging.getLogger("merror.projection")
 # Beyond this many neighbours the map turns into a hairball rather than a shape.
 MAX_EDGES_PER_NODE = 3
 
-# Only draw an edge between memories that are genuinely close in meaning.
-EDGE_SIMILARITY_THRESHOLD = 0.45
+# Edges connect roughly the closest tenth of all pairs. A *relative* cut rather
+# than a fixed number, because absolute cosine similarity depends on the
+# embedding model and on how varied the archive happens to be: measured on a
+# realistic archive, all-MiniLM-L6-v2 pairs peak around 0.39 with a median near
+# 0.04, so any hand-picked constant either links everything or nothing.
+EDGE_PERCENTILE = 90.0
+
+# Even the closest pair in an archive of unrelated notes should not be linked.
+EDGE_SIMILARITY_FLOOR = 0.18
 
 
 def normalise(vectors: np.ndarray) -> np.ndarray:
@@ -120,6 +127,20 @@ def suggest_cluster_count(count: int) -> int:
     return int(min(8, max(2, round(count**0.5 / 1.3))))
 
 
+def edge_threshold(similarity: np.ndarray) -> float:
+    """Decide how close two memories must be to be worth linking.
+
+    Adaptive: the cut sits at EDGE_PERCENTILE of the archive's own pairwise
+    similarities, so a tightly-themed archive and a scattered one both get a
+    readable number of links instead of a hairball or nothing at all.
+    """
+    upper = np.triu_indices(len(similarity), k=1)
+    pairs = similarity[upper]
+    if pairs.size == 0:
+        return EDGE_SIMILARITY_FLOOR
+    return max(EDGE_SIMILARITY_FLOOR, float(np.percentile(pairs, EDGE_PERCENTILE)))
+
+
 def nearest_neighbours(
     vectors: np.ndarray, *, per_node: int = MAX_EDGES_PER_NODE
 ) -> list[tuple[int, int, float]]:
@@ -134,6 +155,7 @@ def nearest_neighbours(
 
     # Rows are unit length, so the dot product is cosine similarity.
     similarity = vectors @ vectors.T
+    threshold = edge_threshold(similarity)
     np.fill_diagonal(similarity, -np.inf)
 
     edges: dict[tuple[int, int], float] = {}
@@ -144,7 +166,7 @@ def nearest_neighbours(
         candidates = np.argpartition(similarity[index], -take)[-take:]
         for other in candidates:
             score = float(similarity[index, other])
-            if score < EDGE_SIMILARITY_THRESHOLD:
+            if score < threshold:
                 continue
             key = (min(index, int(other)), max(index, int(other)))
             edges[key] = max(edges.get(key, 0.0), score)
@@ -174,7 +196,7 @@ def build_layout(
         positions = {ids[0]: (-0.6, 0.0, 0), ids[1]: (0.6, 0.0, 0)}
         edges = (
             [(ids[0], ids[1], similarity)]
-            if similarity >= EDGE_SIMILARITY_THRESHOLD
+            if similarity >= EDGE_SIMILARITY_FLOOR
             else []
         )
         return positions, edges

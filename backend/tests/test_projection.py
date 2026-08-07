@@ -198,3 +198,33 @@ def test_map_is_not_shadowed_by_the_id_route(client):
     response = client.get("/memories/map")
     assert response.status_code == 200
     assert "nodes" in response.json()
+
+
+def test_edge_threshold_adapts_to_the_archive():
+    """A fixed constant links everything or nothing; the cut must be relative."""
+    # A tightly-themed archive: all pairs are close.
+    tight = np.full((6, 6), 0.8)
+    # A scattered one: all pairs are distant.
+    scattered = np.full((6, 6), 0.05)
+
+    assert projection.edge_threshold(tight) > projection.edge_threshold(scattered)
+
+
+def test_edge_threshold_never_falls_below_the_floor():
+    """An archive of unrelated notes should draw no links at all."""
+    unrelated = np.full((8, 8), -0.2)
+    assert projection.edge_threshold(unrelated) >= projection.EDGE_SIMILARITY_FLOOR
+
+
+def test_realistic_archive_draws_some_but_not_all_edges():
+    """The map should show structure without becoming a hairball."""
+    embeddings = {}
+    for i in range(6):
+        embeddings[f"outdoors{i}"] = unit(1.0, 0.05 * i, 0.02 * i, 0.0)
+    for i in range(6):
+        embeddings[f"admin{i}"] = unit(0.0, 0.02 * i, 1.0, 0.05 * i)
+
+    _, edges = projection.build_layout(embeddings)
+    possible = len(embeddings) * (len(embeddings) - 1) // 2
+
+    assert 0 < len(edges) < possible, f"got {len(edges)} of {possible} possible edges"
