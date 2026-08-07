@@ -12,9 +12,9 @@ Anthropic (for reasoning) and ElevenLabs (for voice) — nothing else, nowhere e
 
 ## Status
 
-Under active construction, built in reviewable slices. Currently at **Slice 7 —
-image ingestion**: text, documents, and images can all be ingested. Images are
-described by Claude, then embedded locally. No chat or voice yet.
+Under active construction, built in reviewable slices. Currently at **Slice 8 —
+memory management**: memories can be ingested, listed, searched, and deleted
+through the API. No chat, voice, or UI yet.
 
 ## Architecture
 
@@ -159,6 +159,31 @@ picture itself is the thing being remembered.
 > sent to Anthropic so Claude can describe it; that description is what gets
 > embedded and searched. Everything else — text, documents, all embeddings —
 > stays local. If Claude declines to describe an image, nothing is stored.
+
+## API
+
+Full interactive docs at http://localhost:8000/docs.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/memories/text` | Remember pasted text |
+| `POST` | `/memories/document` | Remember an uploaded document |
+| `POST` | `/memories/image` | Remember an uploaded image |
+| `GET` | `/memories` | List newest-first, or search with `?q=` |
+| `GET` | `/memories/{id}` | One memory, with full content |
+| `GET` | `/memories/{id}/image` | The original image for an image memory |
+| `DELETE` | `/memories/{id}` | Forget a memory, chunks and image included |
+| `GET` | `/memories/supported-types` | Accepted file types and size limits |
+| `GET` | `/config/status` | Which features have their keys configured |
+
+**Search is semantic, not keyword.** `?q=` embeds the query locally and compares
+it against stored memories, so *"quiet reflection in the early hours"* finds a
+memory about walking at dawn that shares none of those words. Results carry a
+`score` in `[0, 1]`; plain listings carry `null`.
+
+List responses return **snippets only** — fetch a single memory for its full
+text — and never include server filesystem paths. Image memories expose
+`has_image: true`; the bytes come from `/memories/{id}/image`.
 
 Tests:
 

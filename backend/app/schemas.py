@@ -51,7 +51,7 @@ class TextMemoryCreate(BaseModel):
 
 
 class MemoryResponse(BaseModel):
-    """A memory as returned to the client."""
+    """A single memory, with its full content."""
 
     id: str
     content: str
@@ -61,6 +61,7 @@ class MemoryResponse(BaseModel):
     source: str
     created_at: datetime
     chunk_count: int
+    has_image: bool = False
 
     @classmethod
     def from_memory(cls, memory: Memory) -> "MemoryResponse":
@@ -73,4 +74,61 @@ class MemoryResponse(BaseModel):
             source=memory.source,
             created_at=memory.created_at,
             chunk_count=memory.chunk_count,
+            has_image=bool(memory.file_path),
         )
+
+
+class MemorySummary(BaseModel):
+    """A memory as it appears in a list — snippet only, never full content.
+
+    Listing twenty long documents with their full text would be megabytes for a
+    sidebar that shows one line each. Clients fetch a single memory when they
+    need the whole thing.
+
+    Note the absence of `file_path`: the client is given `has_image` and an
+    image URL instead, so server filesystem paths never reach the browser.
+    """
+
+    id: str
+    snippet: str
+    type: MemoryType
+    title: str
+    source: str
+    created_at: datetime
+    chunk_count: int
+    has_image: bool = False
+    score: float | None = Field(
+        None, description="Similarity in [0, 1]; present only for search results."
+    )
+
+    @classmethod
+    def from_memory(cls, memory: Memory, score: float | None = None) -> "MemorySummary":
+        return cls(
+            id=memory.id,
+            snippet=memory.snippet,
+            type=memory.type,
+            title=memory.title,
+            source=memory.source,
+            created_at=memory.created_at,
+            chunk_count=memory.chunk_count,
+            has_image=bool(memory.file_path),
+            score=score,
+        )
+
+
+class MemoryListResponse(BaseModel):
+    """A page of memories."""
+
+    memories: list[MemorySummary]
+    total: int = Field(description="Total matching memories, ignoring pagination.")
+    limit: int
+    offset: int
+    query: str = Field("", description="The search query, if this was a search.")
+
+
+class DeleteResponse(BaseModel):
+    """Confirmation that a memory was removed."""
+
+    id: str
+    deleted: bool
+    image_deleted: bool = False
