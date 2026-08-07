@@ -12,9 +12,9 @@ Anthropic (for reasoning) and ElevenLabs (for voice) — nothing else, nowhere e
 
 ## Status
 
-Under active construction, built in reviewable slices. Currently at **Slice 3 —
-config setup**: both services start, share a root `.env`, and report which keys
-are present. No memory, chat, or voice functionality yet.
+Under active construction, built in reviewable slices. Currently at **Slice 4 —
+vector store**: memories can be stored, searched, and deleted locally through
+internal functions. No HTTP routes, chat, or voice yet.
 
 ## Architecture
 
@@ -114,6 +114,24 @@ needing an unset key returns a `503` explaining how to fix it. This keeps the ap
 usable while partially configured.
 
 Settings are read once at boot; **restart the backend after editing `.env`**.
+
+## Memory store
+
+Memories live in a local ChromaDB collection under `backend/data/chroma`.
+Embeddings are computed **on this machine** by Chroma's default model
+(all-MiniLM-L6-v2, 384 dimensions, cached to `~/.cache/chroma` on first use —
+about 80 MB). Memory content is never sent anywhere to be embedded.
+
+One Chroma record holds one *chunk*. A short note is a single chunk; a long
+document becomes many, sharing a `memory_id`. That keeps retrieval accurate on
+long documents while still letting a memory be listed and deleted as one unit.
+
+Tests:
+
+```bash
+cd backend
+.venv/bin/python -m pytest
+```
 
 ## Privacy
 

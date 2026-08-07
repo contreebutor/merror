@@ -3,3 +3,7 @@ uvicorn[standard]==0.41.0
 pydantic==2.13.1
 pydantic-settings==2.13.1
 python-multipart==0.0.20
+chromadb==1.5.9
+
+# Dev
+pytest==9.0.1
