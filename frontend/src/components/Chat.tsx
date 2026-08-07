@@ -14,7 +14,10 @@ import {
   type ChatMessage,
   type RetrievedMemory,
   sendMessage,
+  speak,
+  transcribeAudio,
 } from "@/lib/api";
+import { useRecorder } from "@/lib/useRecorder";
 
 /** A message plus the memories retrieved for it, if any. */
 type Turn = ChatMessage & { retrieved?: RetrievedMemory[] };
@@ -31,8 +34,44 @@ export default function Chat({ onOpenArchive }: { onOpenArchive?: () => void }) 
   const [error, setError] = useState<ApiError | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
 
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+
+  const recorder = useRecorder();
+
+  /** Play a reply aloud, replacing anything already playing. */
+  const playAloud = useCallback(async (text: string) => {
+    const result = await speak(text);
+    if (!result.ok) {
+      // Speech failing must not hide the reply, which is already on screen.
+      setError(result.error);
+      return;
+    }
+
+    audioRef.current?.pause();
+    // Blob URLs leak until revoked; release the previous one before replacing it.
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+    audioUrlRef.current = result.data;
+
+    const audio = new Audio(result.data);
+    audioRef.current = audio;
+    // Autoplay can still be refused if the tab has no user gesture yet.
+    void audio.play().catch(() => undefined);
+  }, []);
+
+  // Stop playback and free the blob URL when the component goes away.
+  useEffect(
+    () => () => {
+      audioRef.current?.pause();
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+    },
+    [],
+  );
 
   // Keep the newest turn in view as the conversation grows.
   useEffect(() => {
@@ -74,7 +113,35 @@ export default function Chat({ onOpenArchive }: { onOpenArchive?: () => void }) 
       ...current,
       { ...result.data.message, retrieved: result.data.retrieved },
     ]);
-  }, [input, pending, conversationId]);
+
+    if (voiceMode) void playAloud(result.data.message.content);
+  }, [input, pending, conversationId, voiceMode, playAloud]);
+
+  /** Tap to start recording, tap again to transcribe and send. */
+  const toggleRecording = useCallback(async () => {
+    if (recorder.state === "recording") {
+      const captured = await recorder.stop();
+      if (!captured) return;
+
+      setTranscribing(true);
+      const result = await transcribeAudio(captured.blob, captured.filename);
+      setTranscribing(false);
+
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      // Land the transcript in the input rather than sending it blind, so a
+      // misheard word can be fixed before it becomes part of the record.
+      setInput(result.data.text);
+      inputRef.current?.focus();
+      return;
+    }
+
+    await recorder.start();
+  }, [recorder]);
+
+  const isRecording = recorder.state === "recording" || recorder.state === "requesting";
 
   function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     // Enter sends; Shift+Enter is a newline.
@@ -103,6 +170,26 @@ export default function Chat({ onOpenArchive }: { onOpenArchive?: () => void }) 
         <h1 className="text-[0.7rem] font-light tracking-[0.42em] text-white/80">
           MERROR
         </h1>
+
+        <button
+          type="button"
+          onClick={() => {
+            const next = !voiceMode;
+            setVoiceMode(next);
+            // Turning voice off should silence anything mid-sentence.
+            if (!next) audioRef.current?.pause();
+          }}
+          aria-pressed={voiceMode}
+          title={voiceMode ? "Replies are spoken aloud" : "Replies are text only"}
+          className={`ml-auto flex items-center gap-1.5 rounded-lg px-2 py-1 text-[0.65rem] uppercase tracking-[0.15em] transition-colors ${
+            voiceMode ? "text-white/80" : "text-white/30 hover:text-white/60"
+          }`}
+        >
+          <svg viewBox="0 0 16 16" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+            <path d="M8 2.5v11M4.5 5.5v5M11.5 5.5v5M1.5 7.5v1M14.5 7.5v1" />
+          </svg>
+          Voice
+        </button>
       </header>
 
       <div className="subtle-scroll flex-1 overflow-y-auto px-6 py-8">
@@ -190,6 +277,31 @@ export default function Chat({ onOpenArchive }: { onOpenArchive?: () => void }) 
       </div>
 
       <div className="glass-divider shrink-0 border-t px-4 py-4 sm:px-6">
+        {(isRecording || transcribing || recorder.error) && (
+          <div className="mb-2 flex items-center gap-2 text-[0.7rem]">
+            {isRecording && (
+              <>
+                <span className="size-1.5 animate-pulse rounded-full bg-red-400" />
+                <span className="text-white/55">Listening… tap the square to stop</span>
+                <button
+                  type="button"
+                  onClick={recorder.cancel}
+                  className="ml-auto text-white/35 transition-colors hover:text-white/70"
+                >
+                  Discard
+                </button>
+              </>
+            )}
+            {transcribing && (
+              <span className="text-white/45">Transcribing on this machine…</span>
+            )}
+            {recorder.error && !isRecording && (
+              <span role="alert" className="text-red-300/85">
+                {recorder.error}
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex items-end gap-2">
           <textarea
             ref={inputRef}
@@ -202,6 +314,27 @@ export default function Chat({ onOpenArchive }: { onOpenArchive?: () => void }) 
             disabled={pending}
             className="glass-raised max-h-40 flex-1 resize-none rounded-2xl px-4 py-3 text-sm text-white/90 outline-none transition-colors placeholder:text-white/30 focus:border-white/25 disabled:opacity-40"
           />
+          <button
+            type="button"
+            onClick={() => void toggleRecording()}
+            disabled={pending || transcribing}
+            aria-label={isRecording ? "Stop recording and transcribe" : "Record a message"}
+            aria-pressed={isRecording}
+            className={`glass-button rounded-2xl px-4 py-3 transition-colors disabled:opacity-25 ${
+              isRecording ? "!border-red-400/40 !bg-red-500/20 text-red-200" : "text-white/70"
+            }`}
+          >
+            {isRecording ? (
+              // A square reads as "stop" more clearly than a mic that is
+              // already active.
+              <span className="block size-4 rounded-[3px] bg-current" />
+            ) : (
+              <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+                <rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25" />
+                <path d="M3.25 7.5a4.75 4.75 0 0 0 9.5 0M8 12.25v2" />
+              </svg>
+            )}
+          </button>
           <button
             type="button"
             onClick={() => void submit()}

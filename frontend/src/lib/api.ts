@@ -260,3 +260,66 @@ export function uploadFile(
     headers: {},
   });
 }
+
+/* --------------------------------------------------------------------------
+   Voice
+   -------------------------------------------------------------------------- */
+
+export type Transcription = { text: string; language: string };
+
+/** Transcribe a recording. Runs locally on the backend — audio never leaves the machine. */
+export function transcribeAudio(blob: Blob, filename = "recording.webm") {
+  const form = new FormData();
+  form.append("file", blob, filename);
+  return request<Transcription>("/voice/transcribe", {
+    method: "POST",
+    body: form,
+    headers: {},
+  });
+}
+
+/**
+ * Synthesize speech and return it as a playable object URL.
+ *
+ * Returns a blob URL rather than raw bytes so the caller can hand it straight
+ * to an <audio> element; the caller owns revoking it.
+ */
+export async function speak(text: string): Promise<Result<string>> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}/voice/speak`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+  } catch {
+    return {
+      ok: false,
+      error: {
+        status: 0,
+        message: `Cannot reach the backend at ${API_URL}.`,
+        needsConfiguration: false,
+      },
+    };
+  }
+
+  if (!response.ok) {
+    // The error path returns JSON even though success returns audio.
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    return {
+      ok: false,
+      error: {
+        status: response.status,
+        message: extractMessage(body, response.status),
+        needsConfiguration: response.status === 503,
+      },
+    };
+  }
+
+  return { ok: true, data: URL.createObjectURL(await response.blob()) };
+}
