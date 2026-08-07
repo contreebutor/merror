@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import MissingConfigError, get_settings, startup_report
-from app.routers import chat, memories
+from app.routers import chat, memories, voice
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("merror")
@@ -42,6 +42,7 @@ app.add_middleware(
 
 app.include_router(memories.router)
 app.include_router(chat.router)
+app.include_router(voice.router)
 
 
 @app.exception_handler(MissingConfigError)
@@ -56,7 +57,7 @@ async def missing_config_handler(request: Request, exc: MissingConfigError):
 
 @app.get("/")
 async def root():
-    return {"name": "MERROR", "status": "ok", "slice": 9}
+    return {"name": "MERROR", "status": "ok", "slice": 15}
 
 
 @app.get("/health")
@@ -78,7 +79,9 @@ async def config_status():
         "features": {
             "chat": "ANTHROPIC_API_KEY" not in missing,
             "vision": "ANTHROPIC_API_KEY" not in missing,
-            "voice": "ELEVENLABS_API_KEY" not in missing,
+            # Speech-to-text runs locally, so it needs no key at all.
+            "voice_in": True,
+            "voice_out": "ELEVENLABS_API_KEY" not in missing,
         },
         "model": settings.anthropic_model,
     }

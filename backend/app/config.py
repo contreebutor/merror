@@ -44,10 +44,17 @@ class Settings(BaseSettings):
     # --- Models & voice ----------------------------------------------------
     anthropic_model: str = "claude-opus-5"
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
+    elevenlabs_model: str = "eleven_multilingual_v2"
+
+    # Whisper size. "base" transcribes faster than real time on CPU and is
+    # accurate enough for dictation; "small" is noticeably better on accents
+    # and background noise at roughly 3x the time.
+    whisper_model: str = "base"
 
     # --- Local storage -----------------------------------------------------
     chroma_dir: Path = Field(default=Path("data/chroma"))
     uploads_dir: Path = Field(default=Path("data/uploads"))
+    whisper_cache_dir: Path = Field(default=Path("data/models"))
 
     # --- Networking --------------------------------------------------------
     backend_port: int = 8000
@@ -70,6 +77,11 @@ class Settings(BaseSettings):
         would silently use two different databases.
         """
         return value if value.is_absolute() else BACKEND_DIR / value
+
+    @property
+    def whisper_cache_path(self) -> Path:
+        """Where the downloaded Whisper weights live."""
+        return self._resolve(self.whisper_cache_dir)
 
     @property
     def cors_origins(self) -> list[str]:

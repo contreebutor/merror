@@ -273,3 +273,29 @@ class PromoteRequest(BaseModel):
 
     message_id: str = Field(..., description="Which message to remember.")
     title: str = Field("", max_length=200, description="Optional label.")
+
+
+# ---------------------------------------------------------------------------
+# Voice
+# ---------------------------------------------------------------------------
+
+
+class TranscriptionResponse(BaseModel):
+    """Result of transcribing a recording."""
+
+    text: str
+    language: str = Field("", description="Language detected by Whisper, if any.")
+
+
+class SpeakRequest(BaseModel):
+    """Body of POST /voice/speak."""
+
+    text: str = Field(..., description="What to say aloud.")
+
+    @field_validator("text")
+    @classmethod
+    def text_must_be_meaningful(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("There is nothing to say.")
+        return stripped
