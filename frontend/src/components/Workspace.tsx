@@ -12,6 +12,7 @@ import { useState } from "react";
 
 import Chat from "@/components/Chat";
 import MemoryMap from "@/components/MemoryMap";
+import SetupNotice from "@/components/SetupNotice";
 import Sidebar from "@/components/Sidebar";
 
 export default function Workspace() {
@@ -41,14 +42,19 @@ export default function Workspace() {
         </div>
       )}
 
-      <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <SetupNotice />
         {mapOpen ? (
-          <MemoryMap onClose={() => setMapOpen(false)} />
+          <div className="min-h-0 flex-1">
+            <MemoryMap onClose={() => setMapOpen(false)} />
+          </div>
         ) : (
+          <div className="min-h-0 flex-1">
           <Chat
             onOpenArchive={() => setArchiveOpen(true)}
             onOpenMap={() => setMapOpen(true)}
           />
+          </div>
         )}
       </div>
     </main>

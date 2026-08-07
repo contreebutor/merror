@@ -254,7 +254,7 @@ export default function AddMemory({
       )}
 
       {status.kind === "failed" && (
-        <p role="alert" className="mt-2 text-[0.7rem] leading-relaxed text-red-300/85">
+        <p role="alert" className="wrap-anywhere mt-2 text-[0.7rem] leading-relaxed text-red-300/85">
           {status.message}
         </p>
       )}

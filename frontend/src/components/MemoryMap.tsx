@@ -298,7 +298,7 @@ export default function MemoryMap({ onClose }: { onClose: () => void }) {
               />
             )}
 
-            <p className="mt-3 text-[0.7rem] leading-relaxed text-white/50">
+            <p className="wrap-anywhere mt-3 text-[0.7rem] leading-relaxed text-white/50">
               {selected.snippet}
             </p>
 

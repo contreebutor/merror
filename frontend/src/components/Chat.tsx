@@ -148,6 +148,17 @@ export default function Chat({
   }, [recorder]);
 
   const isRecording = recorder.state === "recording" || recorder.state === "requesting";
+  const hasConversation = turns.length > 0;
+
+  /** Clear the screen and start fresh. The old conversation stays on disk. */
+  function startNewConversation() {
+    audioRef.current?.pause();
+    setTurns([]);
+    setConversationId(null);
+    setError(null);
+    setInput("");
+    inputRef.current?.focus();
+  }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     // Enter sends; Shift+Enter is a newline.
@@ -177,13 +188,25 @@ export default function Chat({
           MERROR
         </h1>
 
+        <div className="ml-auto flex items-center gap-1">
+        {hasConversation && (
+          <button
+            type="button"
+            onClick={startNewConversation}
+            title="Start a new conversation (this one is kept)"
+            className="ml-auto rounded-lg px-2 py-1 text-[0.65rem] uppercase tracking-[0.15em] text-white/30 transition-colors hover:text-white/70"
+          >
+            New
+          </button>
+        )}
+
         {onOpenMap && (
           <button
             type="button"
             onClick={onOpenMap}
             aria-label="Open the memory map"
             title="See the archive as a map"
-            className="ml-auto rounded-lg px-2 py-1 text-white/30 transition-colors hover:text-white/70"
+            className="rounded-lg px-2 py-1 text-white/30 transition-colors hover:text-white/70"
           >
             {/* Connected nodes: the archive as a shape. */}
             <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.2">
@@ -214,6 +237,7 @@ export default function Chat({
           </svg>
           Voice
         </button>
+        </div>
       </header>
 
       <div className="subtle-scroll flex-1 overflow-y-auto px-6 py-8">
@@ -232,8 +256,8 @@ export default function Chat({
               <div
                 className={
                   turn.role === "user"
-                    ? "whitespace-pre-wrap leading-relaxed text-white/75"
-                    : "whitespace-pre-wrap leading-relaxed text-white/95"
+                    ? "wrap-anywhere whitespace-pre-wrap leading-relaxed text-white/75"
+                    : "wrap-anywhere whitespace-pre-wrap leading-relaxed text-white/95"
                 }
               >
                 {turn.content}
@@ -259,7 +283,7 @@ export default function Chat({
                             {Math.round(memory.score * 100)}%
                           </span>
                         </div>
-                        <p className="mt-1 leading-relaxed text-white/40">
+                        <p className="wrap-anywhere mt-1 leading-relaxed text-white/40">
                           {memory.snippet}
                         </p>
                       </li>
@@ -284,7 +308,17 @@ export default function Chat({
               role="alert"
               className="rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm"
             >
-              <p className="text-red-200/90">{error.message}</p>
+              <div className="flex items-start gap-2">
+                <p className="wrap-anywhere flex-1 text-red-200/90">{error.message}</p>
+                <button
+                  type="button"
+                  onClick={() => setError(null)}
+                  aria-label="Dismiss error"
+                  className="shrink-0 text-red-200/50 transition-colors hover:text-red-200"
+                >
+                  ✕
+                </button>
+              </div>
               {error.needsConfiguration && (
                 <p className="mt-2 text-xs leading-relaxed text-white/50">
                   Copy <code className="text-white/70">.env.example</code> to{" "}

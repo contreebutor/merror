@@ -12,7 +12,7 @@ export const API_URL =
 export type ConfigStatus = {
   configured: boolean;
   missing: string[];
-  features: { chat: boolean; vision: boolean; voice: boolean };
+  features: { chat: boolean; vision: boolean; voice_in: boolean; voice_out: boolean };
   model: string;
 };
 

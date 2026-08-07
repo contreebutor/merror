@@ -139,7 +139,7 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
         )}
 
         {error && (
-          <p role="alert" className="py-4 text-xs leading-relaxed text-red-300/80">
+          <p role="alert" className="wrap-anywhere py-4 text-xs leading-relaxed text-red-300/80">
             {error}
           </p>
         )}
@@ -181,7 +181,7 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 line-clamp-2 text-[0.7rem] leading-relaxed text-white/40">
+                    <p className="wrap-anywhere mt-1 line-clamp-2 text-[0.7rem] leading-relaxed text-white/40">
                       {memory.snippet}
                     </p>
                     <p className="mt-1 text-[0.65rem] text-white/20">
