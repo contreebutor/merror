@@ -12,9 +12,10 @@ Anthropic (for reasoning) and ElevenLabs (for voice) — nothing else, nowhere e
 
 ## Status
 
-Under active construction, built in reviewable slices. Currently at **Slice 9 —
-RAG chat**: the backend is functionally complete for text. You can converse with
-your archive through the API. No UI or voice yet.
+Under active construction, built in reviewable slices. Currently at **Slice 10 —
+basic chat UI**: usable end to end. Add an `ANTHROPIC_API_KEY`, start both
+services, and you can talk to your archive in the browser. The interface is
+deliberately plain — the visual design lands in Slice 11.
 
 ## Architecture
 
