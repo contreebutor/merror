@@ -1,24 +1,34 @@
 """Memory ingestion routes.
 
-Slices 5 and 6 cover raw text and documents. Images follow in Slice 7; listing
-and deletion in Slice 8.
+Slices 5, 6, and 7 cover raw text, documents, and images. Listing and deletion
+follow in Slice 8.
 """
 
 import logging
+import uuid
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
-from app import store
+from app import media, store
 from app.chunking import chunk_text
 from app.documents import (
     MAX_UPLOAD_BYTES,
     SUPPORTED_EXTENSIONS,
     DocumentParseError,
     UnsupportedDocumentError,
+    extension_of,
     extract_text,
 )
 from app.models import MemoryType
 from app.schemas import MemoryResponse, TextMemoryCreate
+from app.vision import (
+    MAX_IMAGE_BYTES,
+    SUPPORTED_IMAGE_TYPES,
+    ImageRefusedError,
+    VisionError,
+    describe_image,
+    media_type_for,
+)
 
 logger = logging.getLogger("merror.memories")
 
@@ -115,10 +125,93 @@ async def create_document_memory(
     return MemoryResponse.from_memory(memory)
 
 
+@router.post(
+    "/image",
+    response_model=MemoryResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Remember an uploaded image",
+)
+async def create_image_memory(
+    file: UploadFile = File(..., description="A .jpg, .png, .gif, or .webp image"),
+    title: str = Form("", description="Optional label; defaults to the filename"),
+) -> MemoryResponse:
+    """Describe an image with Claude, then embed and store the description.
+
+    This is the only ingestion path that sends data off the machine: the image
+    goes to Anthropic to be described. The description is embedded locally, and
+    the original image is kept on disk so the UI can show it.
+    """
+    filename = (file.filename or "").strip()
+    if not filename:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "No filename provided.")
+
+    extension = extension_of(filename)
+    declared_type = media_type_for(extension)
+    if declared_type is None:
+        raise HTTPException(
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            f"Cannot read '{extension or filename}'. Supported images: "
+            f"{', '.join(sorted(SUPPORTED_IMAGE_TYPES))}.",
+        )
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "The uploaded file is empty.")
+
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            f"'{filename}' is {len(data) / 1_048_576:.1f} MB, over the "
+            f"{MAX_IMAGE_BYTES / 1_048_576:.1f} MB limit. Resize it and retry.",
+        )
+
+    # Trust the file's own bytes over its extension, so a mislabelled or
+    # disguised file is rejected here rather than confusing the vision API.
+    actual_type = media.sniff_media_type(data)
+    if actual_type is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"'{filename}' does not look like a valid image file.",
+        )
+
+    memory_id = uuid.uuid4().hex
+
+    try:
+        description = describe_image(data, actual_type, filename=filename)
+    except ImageRefusedError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    except VisionError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+    # Written only after a successful description, so a failed upload never
+    # leaves an orphaned file behind.
+    stored_path = media.save_image(memory_id, extension, data)
+
+    try:
+        memory = store.add_memory(
+            content=description,
+            memory_type=MemoryType.IMAGE,
+            title=title.strip() or filename,
+            source=filename,
+            file_path=str(stored_path),
+            chunks=chunk_text(description),
+            memory_id=memory_id,
+        )
+    except Exception:
+        # Keep disk and vector store consistent if embedding fails.
+        media.delete_image(stored_path)
+        raise
+
+    logger.info("Created image memory %s from %s", memory.id, filename)
+    return MemoryResponse.from_memory(memory)
+
+
 @router.get("/supported-types", summary="File types accepted for upload")
 async def supported_types() -> dict[str, object]:
     """Let the upload UI describe limits without hardcoding them."""
     return {
         "extensions": sorted(SUPPORTED_EXTENSIONS),
         "max_bytes": MAX_UPLOAD_BYTES,
+        "image_extensions": sorted(SUPPORTED_IMAGE_TYPES),
+        "image_max_bytes": MAX_IMAGE_BYTES,
     }

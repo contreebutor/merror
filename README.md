@@ -12,9 +12,9 @@ Anthropic (for reasoning) and ElevenLabs (for voice) — nothing else, nowhere e
 
 ## Status
 
-Under active construction, built in reviewable slices. Currently at **Slice 6 —
-document ingestion**: text and PDF/DOCX/TXT/MD uploads are parsed, chunked, and
-embedded locally. No image upload, chat, or voice yet.
+Under active construction, built in reviewable slices. Currently at **Slice 7 —
+image ingestion**: text, documents, and images can all be ingested. Images are
+described by Claude, then embedded locally. No chat or voice yet.
 
 ## Architecture
 
@@ -98,7 +98,7 @@ committed.
 |---|---|---|
 | `ANTHROPIC_API_KEY` | backend | Chat reasoning, image understanding |
 | `ELEVENLABS_API_KEY` | backend | Text-to-speech |
-| `ANTHROPIC_MODEL` | backend | Claude model (default `claude-sonnet-5`) |
+| `ANTHROPIC_MODEL` | backend | Claude model (default `claude-opus-5`) |
 | `ELEVENLABS_VOICE_ID` | backend | Voice selection |
 | `CHROMA_DIR` / `UPLOADS_DIR` | backend | Local storage paths, relative to `backend/` |
 | `FRONTEND_ORIGIN` | backend | CORS allowlist |
@@ -143,11 +143,22 @@ is why the cap matters.
 
 ### Supported uploads
 
-`.pdf`, `.docx`, `.txt`, `.md` — up to 25 MB, parsed in-process. Legacy `.doc`
-is not supported (different binary format); re-save as `.docx`. Scanned PDFs
-have no text layer and are rejected with a message pointing at image upload.
-Uploaded documents are **not retained on disk** — only the extracted text is
-stored, since that is all retrieval needs.
+**Documents** — `.pdf`, `.docx`, `.txt`, `.md`, up to 25 MB, parsed in-process.
+Legacy `.doc` is not supported (different binary format); re-save as `.docx`.
+Scanned PDFs have no text layer and are rejected with a message pointing at
+image upload. Documents are **not retained on disk** — only the extracted text
+is stored, since that is all retrieval needs.
+
+**Images** — `.jpg`, `.png`, `.gif`, `.webp`, up to 3.5 MB. File type is
+determined by *magic bytes*, not the extension, so a mislabelled file is
+rejected before anything is sent anywhere. Unlike documents, the original image
+**is** kept under `backend/data/uploads/images/`, named after its memory id — the
+picture itself is the thing being remembered.
+
+> **Images are the one ingestion path that leaves this machine.** The image is
+> sent to Anthropic so Claude can describe it; that description is what gets
+> embedded and searched. Everything else — text, documents, all embeddings —
+> stays local. If Claude declines to describe an image, nothing is stored.
 
 Tests:
 

@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
 
     # --- Models & voice ----------------------------------------------------
-    anthropic_model: str = "claude-sonnet-5"
+    anthropic_model: str = "claude-opus-5"
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
 
     # --- Local storage -----------------------------------------------------

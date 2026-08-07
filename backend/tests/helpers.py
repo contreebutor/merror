@@ -1,10 +1,14 @@
-"""Builders for real document files used in tests.
+"""Builders for real files and fake API responses used in tests.
 
-These produce genuine PDF/DOCX bytes rather than mocks, so the parsers are
-exercised the same way they will be in production.
+Document and image bytes are genuine rather than mocked, so the parsers and
+sniffers are exercised the same way they will be in production. Only the
+Anthropic API call itself is faked — it costs money and needs a network.
 """
 
 import io
+import struct
+import zlib
+from dataclasses import dataclass, field
 
 
 def make_pdf(lines: list[str]) -> bytes:
@@ -61,3 +65,98 @@ def make_docx(paragraphs: list[str], table_rows: list[list[str]] | None = None) 
     buffer = io.BytesIO()
     document.save(buffer)
     return buffer.getvalue()
+
+
+# --- Real image bytes ------------------------------------------------------
+
+
+def make_png(width: int = 1, height: int = 1) -> bytes:
+    """Build a minimal valid PNG."""
+
+    def chunk(tag: bytes, payload: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(payload))
+            + tag
+            + payload
+            + struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF)
+        )
+
+    header = struct.pack(">2I5B", width, height, 8, 2, 0, 0, 0)
+    raw = b"".join(b"\x00" + b"\xff\x00\x00" * width for _ in range(height))
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(raw))
+        + chunk(b"IEND", b"")
+    )
+
+
+def make_jpeg() -> bytes:
+    """Build a byte string with a valid JPEG signature."""
+    return b"\xff\xd8\xff\xe0" + b"\x00\x10JFIF\x00" + b"\x00" * 32 + b"\xff\xd9"
+
+
+def make_gif() -> bytes:
+    """Build a byte string with a valid GIF signature."""
+    return b"GIF89a" + b"\x01\x00\x01\x00\x00\x00\x00" + b"\x3b"
+
+
+def make_webp() -> bytes:
+    """Build a byte string with a valid RIFF/WEBP signature."""
+    body = b"VP8 " + b"\x00" * 16
+    return b"RIFF" + struct.pack("<I", len(body) + 4) + b"WEBP" + body
+
+
+# --- Fake Anthropic responses ----------------------------------------------
+
+
+@dataclass
+class FakeTextBlock:
+    text: str
+    type: str = "text"
+
+
+@dataclass
+class FakeStopDetails:
+    category: str | None = None
+    explanation: str = ""
+
+
+@dataclass
+class FakeMessage:
+    """Stand-in for anthropic.types.Message, with only the fields we read."""
+
+    content: list = field(default_factory=list)
+    stop_reason: str = "end_turn"
+    stop_details: FakeStopDetails | None = None
+
+
+class FakeMessages:
+    def __init__(self, response):
+        self._response = response
+        self.calls: list[dict] = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if isinstance(self._response, Exception):
+            raise self._response
+        return self._response
+
+
+class FakeAnthropic:
+    """Minimal stand-in for anthropic.Anthropic."""
+
+    def __init__(self, response):
+        self.messages = FakeMessages(response)
+
+
+def text_response(text: str) -> FakeMessage:
+    return FakeMessage(content=[FakeTextBlock(text=text)])
+
+
+def refusal_response(category: str = "privacy") -> FakeMessage:
+    return FakeMessage(
+        content=[],
+        stop_reason="refusal",
+        stop_details=FakeStopDetails(category=category),
+    )

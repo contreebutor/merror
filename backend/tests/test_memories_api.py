@@ -1,9 +1,20 @@
 """Tests for the memory ingestion routes."""
 
+from pathlib import Path
+
 from app import store
 from app.models import MemoryType
 from app.routers.memories import derive_title
-from tests.helpers import make_docx, make_empty_pdf, make_pdf
+from tests.helpers import (
+    make_docx,
+    make_empty_pdf,
+    make_gif,
+    make_jpeg,
+    make_pdf,
+    make_png,
+    refusal_response,
+    text_response,
+)
 
 
 def test_create_text_memory_returns_201_and_persists(client):
@@ -190,3 +201,132 @@ def test_supported_types_endpoint(client):
     body = client.get("/memories/supported-types").json()
     assert ".pdf" in body["extensions"]
     assert body["max_bytes"] == 25 * 1024 * 1024
+    assert ".png" in body["image_extensions"]
+
+
+# --- Image upload ----------------------------------------------------------
+
+
+def upload_image(client, filename: str, data: bytes, **form):
+    return client.post(
+        "/memories/image",
+        files={"file": (filename, data, "application/octet-stream")},
+        data=form,
+    )
+
+
+def test_upload_image_describes_embeds_and_stores(client, fake_vision):
+    fake_vision(text_response("A sunlit desk with an open notebook and cold coffee."))
+
+    response = upload_image(client, "desk.png", make_png())
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["type"] == "image"
+    assert body["source"] == "desk.png"
+    assert "sunlit desk" in body["content"]
+
+    # The description — not the raw bytes — is what got embedded.
+    stored = store.get_memory(body["id"])
+    assert stored.type is MemoryType.IMAGE
+    assert "notebook" in stored.content
+
+
+def test_original_image_is_saved_locally(client, fake_vision):
+    fake_vision(text_response("A photograph."))
+    data = make_png()
+
+    body = upload_image(client, "photo.png", data).json()
+    stored_path = Path(store.get_memory(body["id"]).file_path)
+
+    assert stored_path.is_file()
+    assert stored_path.read_bytes() == data, "image must be stored byte-identical"
+    assert stored_path.stem == body["id"], "filename derives from the memory id"
+
+
+def test_image_memory_is_searchable_by_description(client, fake_vision):
+    fake_vision(text_response("A golden retriever asleep on a porch in summer."))
+    upload_image(client, "dog.png", make_png())
+
+    results = store.search_memories("my pet sleeping outdoors", k=1)
+    assert results
+    assert results[0].memory.type is MemoryType.IMAGE
+
+
+def test_all_supported_image_formats_accepted(client, fake_vision):
+    fake_vision(text_response("An image."))
+
+    for name, data in [("a.png", make_png()), ("b.jpg", make_jpeg()), ("c.gif", make_gif())]:
+        assert upload_image(client, name, data).status_code == 201, name
+
+
+def test_explicit_title_overrides_filename_for_images(client, fake_vision):
+    fake_vision(text_response("An image."))
+    body = upload_image(client, "IMG_4821.png", make_png(), title="Kitchen window").json()
+    assert body["title"] == "Kitchen window"
+
+
+def test_non_image_extension_returns_415(client, fake_vision):
+    client_stub = fake_vision(text_response("unused"))
+
+    response = upload_image(client, "notes.pdf", make_pdf(["text"]))
+
+    assert response.status_code == 415
+    assert client_stub.messages.calls == [], "must not call the API for a rejected type"
+
+
+def test_disguised_file_returns_422(client, fake_vision):
+    # A PDF renamed to .png must be caught by content sniffing, not sent onward.
+    client_stub = fake_vision(text_response("unused"))
+
+    response = upload_image(client, "sneaky.png", make_pdf(["I am a PDF"]))
+
+    assert response.status_code == 422
+    assert "does not look like a valid image" in response.json()["detail"]
+    assert client_stub.messages.calls == []
+
+
+def test_empty_image_returns_422(client, fake_vision):
+    fake_vision(text_response("unused"))
+    assert upload_image(client, "empty.png", b"").status_code == 422
+
+
+def test_oversized_image_returns_413(client, fake_vision):
+    from app.vision import MAX_IMAGE_BYTES
+
+    fake_vision(text_response("unused"))
+    response = upload_image(client, "huge.png", b"\x89PNG\r\n\x1a\n" + b"x" * MAX_IMAGE_BYTES)
+
+    assert response.status_code == 413
+    assert "MB" in response.json()["detail"]
+
+
+def test_refused_image_returns_422_and_stores_nothing(client, fake_vision):
+    fake_vision(refusal_response(category="privacy"))
+
+    response = upload_image(client, "private.png", make_png())
+
+    assert response.status_code == 422
+    assert store.count_memories() == 0
+    assert not any(client_images().iterdir()), "no image file should be left behind"
+
+
+def test_api_failure_returns_502_and_stores_nothing(client, fake_vision):
+    import anthropic
+    import httpx
+
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    fake_vision(anthropic.APIConnectionError(request=request))
+
+    response = upload_image(client, "photo.png", make_png())
+
+    assert response.status_code == 502
+    assert store.count_memories() == 0
+    assert not any(client_images().iterdir())
+
+
+def client_images():
+    """The temp images directory for the current test."""
+    from app import media
+
+    return media.images_dir()
