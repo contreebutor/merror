@@ -12,10 +12,10 @@ Anthropic (for reasoning) and ElevenLabs (for voice) — nothing else, nowhere e
 
 ## Status
 
-Under active construction, built in reviewable slices. Currently at **Slice 11 —
-visual design**: usable end to end, with the glass-and-gradient interface in
-place. Add an `ANTHROPIC_API_KEY`, start both services, and you can talk to your
-archive in the browser. No memory sidebar, upload UI, or voice yet.
+Under active construction, built in reviewable slices. Currently at **Slice 12 —
+archive sidebar**: chat plus a searchable, deletable memory list. Add an
+`ANTHROPIC_API_KEY`, start both services, and you can talk to your archive in
+the browser. Adding memories still needs the API — the upload UI is Slice 13.
 
 ## Architecture
 

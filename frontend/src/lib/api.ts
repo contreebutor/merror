@@ -81,6 +81,9 @@ function extractMessage(body: unknown, status: number): string {
   return `Request failed with status ${status}.`;
 }
 
+/** Raised for a request the caller deliberately cancelled — never shown to the user. */
+export const ABORTED = "aborted" as const;
+
 async function request<T>(path: string, init?: RequestInit): Promise<Result<T>> {
   let response: Response;
   try {
@@ -88,7 +91,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<Result<T>> 
       headers: { "Content-Type": "application/json" },
       ...init,
     });
-  } catch {
+  } catch (cause) {
+    // A superseded search is not a failure — the caller aborted it on purpose.
+    if (cause instanceof DOMException && cause.name === "AbortError") {
+      return { ok: false, error: { status: 0, message: ABORTED, needsConfiguration: false } };
+    }
     return {
       ok: false,
       error: {
@@ -140,4 +147,61 @@ export function sendMessage(
 
 export function getConversation(id: string): Promise<Result<ConversationDetail>> {
   return request<ConversationDetail>(`/conversations/${id}`);
+}
+
+/* --------------------------------------------------------------------------
+   Memories
+   -------------------------------------------------------------------------- */
+
+/** A memory as it appears in a list — snippet only, no full content. */
+export type MemorySummary = {
+  id: string;
+  snippet: string;
+  type: MemoryType;
+  title: string;
+  source: string;
+  created_at: string;
+  chunk_count: number;
+  has_image: boolean;
+  score: number | null;
+};
+
+export type MemoryListResponse = {
+  memories: MemorySummary[];
+  total: number;
+  limit: number;
+  offset: number;
+  query: string;
+};
+
+export type DeleteResult = {
+  id: string;
+  deleted: boolean;
+  image_deleted: boolean;
+};
+
+/**
+ * List memories, newest first — or ranked by meaning when `query` is given.
+ *
+ * Pass a `signal` so a superseded search can be cancelled; otherwise a slow
+ * earlier request can land after a faster later one and show stale results.
+ */
+export function listMemories(
+  options: { query?: string; type?: MemoryType | null; signal?: AbortSignal } = {},
+): Promise<Result<MemoryListResponse>> {
+  const params = new URLSearchParams();
+  if (options.query?.trim()) params.set("q", options.query.trim());
+  if (options.type) params.set("type", options.type);
+
+  const suffix = params.toString() ? `?${params}` : "";
+  return request<MemoryListResponse>(`/memories${suffix}`, { signal: options.signal });
+}
+
+export function deleteMemory(id: string): Promise<Result<DeleteResult>> {
+  return request<DeleteResult>(`/memories/${id}`, { method: "DELETE" });
+}
+
+/** URL for an image memory's original file. */
+export function memoryImageUrl(id: string): string {
+  return `${API_URL}/memories/${id}/image`;
 }
