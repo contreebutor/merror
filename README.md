@@ -12,9 +12,9 @@ Anthropic (for reasoning) and ElevenLabs (for voice) — nothing else, nowhere e
 
 ## Status
 
-Under active construction, built in reviewable slices. Currently at **Slice 2 —
-repo scaffold**: both services start and serve a placeholder. No memory, chat,
-or voice functionality yet.
+Under active construction, built in reviewable slices. Currently at **Slice 3 —
+config setup**: both services start, share a root `.env`, and report which keys
+are present. No memory, chat, or voice functionality yet.
 
 ## Architecture
 
@@ -85,8 +85,35 @@ npm run dev
 
 ## Configuration
 
-API keys live in a gitignored `.env` and are never committed. Setup arrives in
-Slice 3 — until then no keys are required, because nothing calls out yet.
+Copy the template and fill in your keys:
+
+```bash
+cp .env.example .env
+```
+
+A single repo-root `.env` configures both services. It is gitignored and never
+committed.
+
+| Variable | Used by | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | backend | Chat reasoning, image understanding |
+| `ELEVENLABS_API_KEY` | backend | Text-to-speech |
+| `ANTHROPIC_MODEL` | backend | Claude model (default `claude-sonnet-5`) |
+| `ELEVENLABS_VOICE_ID` | backend | Voice selection |
+| `CHROMA_DIR` / `UPLOADS_DIR` | backend | Local storage paths, relative to `backend/` |
+| `FRONTEND_ORIGIN` | backend | CORS allowlist |
+| `NEXT_PUBLIC_API_URL` | frontend | Backend base URL |
+
+**Only `NEXT_PUBLIC_*` variables reach the browser.** `next.config.ts` reads the
+root `.env` through a strict prefix allowlist, so API keys stay backend-side and
+cannot end up in the client bundle.
+
+Missing keys do not prevent startup — the backend prints a banner naming what is
+absent, `GET /config/status` reports which features are available, and any route
+needing an unset key returns a `503` explaining how to fix it. This keeps the app
+usable while partially configured.
+
+Settings are read once at boot; **restart the backend after editing `.env`**.
 
 ## Privacy
 
