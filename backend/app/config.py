@@ -38,11 +38,18 @@ class Settings(BaseSettings):
     )
 
     # --- Secrets -----------------------------------------------------------
-    anthropic_api_key: str = ""
+    # One key reaches every model. Switching between Claude, GPT, Gemini, or an
+    # open model is a string change, not a new integration.
+    openrouter_api_key: str = ""
     elevenlabs_api_key: str = ""
 
     # --- Models & voice ----------------------------------------------------
-    anthropic_model: str = "claude-opus-5"
+    # Any id from https://openrouter.ai/models.
+    openrouter_model: str = "anthropic/claude-sonnet-4.5"
+
+    # Describing an image needs a vision-capable model, which the chat model
+    # may not be. Blank means "use the chat model".
+    openrouter_vision_model: str = ""
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
     elevenlabs_model: str = "eleven_multilingual_v2"
 
@@ -91,11 +98,16 @@ class Settings(BaseSettings):
             origins.add(self.frontend_origin.replace("localhost", "127.0.0.1"))
         return sorted(origins)
 
+    @property
+    def vision_model(self) -> str:
+        """Which model describes images."""
+        return self.openrouter_vision_model.strip() or self.openrouter_model
+
     def missing_keys(self) -> list[str]:
         """Names of unset secrets, in the order features will need them."""
         missing = []
-        if not self.anthropic_api_key.strip():
-            missing.append("ANTHROPIC_API_KEY")
+        if not self.openrouter_api_key.strip():
+            missing.append("OPENROUTER_API_KEY")
         if not self.elevenlabs_api_key.strip():
             missing.append("ELEVENLABS_API_KEY")
         return missing
@@ -146,7 +158,7 @@ def startup_report() -> str:
         lines.append("  !! Missing keys — related features will return 503:")
         for key in missing:
             feature = {
-                "ANTHROPIC_API_KEY": "chat, image understanding",
+                "OPENROUTER_API_KEY": "chat, image understanding",
                 "ELEVENLABS_API_KEY": "voice output",
             }[key]
             lines.append(f"       - {key}  ({feature})")
@@ -154,7 +166,8 @@ def startup_report() -> str:
         lines.append("  All API keys present.")
 
     lines += [
-        f"  Model:   {settings.anthropic_model}",
+        f"  Model:   {settings.openrouter_model}",
+        f"  Vision:  {settings.vision_model}",
         f"  Storage: {settings.chroma_path}",
         f"  CORS:    {', '.join(settings.cors_origins)}",
         "=" * 62,
